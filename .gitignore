@@ -1,0 +1,42 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Dist / build
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Tests & tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs (сессионные файлы, не нужны в VCS)
+logs/*.json
+logs/*.log
+
+# Generated outputs
+scripts/show_chunks_output.md
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
