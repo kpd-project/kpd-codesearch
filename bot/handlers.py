@@ -48,7 +48,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
     
     try:
-        result = rag.index_repo(repo_name)
+        result = rag.index_repo(repo_name, resume=True)
         if "error" in result:
             await update.message.reply_text(f"❌ Ошибка: {result['error']}")
         else:

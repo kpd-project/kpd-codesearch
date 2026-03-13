@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterator
 
 import pathspec
+import config
 
 
 def _load_gitignore(repo_path: Path) -> pathspec.PathSpec | None:
@@ -136,7 +137,9 @@ def iter_code_files(repo_path: Path) -> Iterator[Path]:
                 yield path
 
 
-def read_file_content(path: Path, max_size: int = 500_000) -> str:
+def read_file_content(path: Path, max_size: int = None) -> str:
+    if max_size is None:
+        max_size = config.FILE_MAX_SIZE
     try:
         if path.stat().st_size > max_size:
             return f"[File too large: {path.stat().st_size} bytes]"

@@ -29,6 +29,9 @@ build/
 logs/*.json
 logs/*.log
 
+# Состояние индексации (resume)
+.index_state/
+
 # Generated outputs
 scripts/show_chunks_output.md
 

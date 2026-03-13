@@ -31,6 +31,9 @@ _PROMPT_FILE = Path(__file__).parent / "system_prompt.txt"
 AGENT_SYSTEM_PROMPT = _PROMPT_FILE.read_text(encoding="utf-8").strip()
 CHUNK_OVERLAP = 200
 
+# Макс. размер файла в байтах (больше — плейсхолдер вместо содержимого)
+FILE_MAX_SIZE = int(os.getenv("FILE_MAX_SIZE", "2_000_000"))
+
 # Макс. символов в одном батче эмбеддингов (~4 символа ≈ 1 токен)
 EMBED_MAX_CHARS_PER_BATCH = int(os.getenv("EMBED_MAX_CHARS_PER_BATCH", "8000"))
 
