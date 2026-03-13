@@ -14,6 +14,7 @@ def get_embeddings():
             model=config.EMBEDDINGS_MODEL,
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=config.OPENROUTER_API_KEY,
-            dimensions=config.EMBEDDINGS_DIMENSION,  # Qwen3-8B: 4096 по умолч., или меньше (Matryoshka)
+            # dimensions не передаём — OpenRouter его игнорирует/отклоняет,
+            # text-embedding-3-small возвращает 1536 по умолчанию
         )
     return EMBEDDINGS
