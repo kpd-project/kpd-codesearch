@@ -1,14 +1,17 @@
 import asyncio
+import logging
 import queue
 import re
 import time
 from datetime import datetime, timezone
 
 import config
+
+logger = logging.getLogger(__name__)
 import rag
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ChatType, MessageEntityType, ParseMode
+from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -236,21 +239,24 @@ def _telegram_markdown(text: str) -> str:
 
 
 def _is_addressed_to_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """В группах — только при упоминании бота; в личке — всегда."""
-    chat = update.message.chat
+    """В группах — при упоминании @бот или reply на бота; в личке — всегда."""
+    msg = update.effective_message
+    if not msg or not msg.text:
+        return False
+    chat = msg.chat
     if chat.type == ChatType.PRIVATE:
         return True
-    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
         return False
     bot = context.bot
     bot_username = (bot.username or "").lower()
-    for ent in (update.message.entities or []):
-        if ent.type == MessageEntityType.MENTION:
-            mention = update.message.text[ent.offset : ent.offset + ent.length].lstrip("@").lower()
-            if mention == bot_username:
-                return True
-        elif ent.type == MessageEntityType.TEXT_MENTION and ent.user and ent.user.id == bot.id:
-            return True
+    text = (msg.text or "").lower()
+    # Простая проверка @username (UTF-16 в entities ломает срез для эмодзи/кириллицы)
+    if f"@{bot_username}" in text:
+        return True
+    # Reply на сообщение бота — тоже обращение
+    if msg.reply_to_message and msg.reply_to_message.from_user and msg.reply_to_message.from_user.id == bot.id:
+        return True
     return False
 
 
@@ -261,14 +267,21 @@ def _extract_question(text: str, context: ContextTypes.DEFAULT_TYPE) -> str:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     user = update.effective_user
+    chat = msg.chat if msg else None
+    txt = (msg.text or "")[:80] if msg else ""
+    logger.info("handle_message: chat=%s type=%s user_id=%s text=%r", chat.id if chat else None, getattr(chat, "type", None), user.id if user else None, txt)
     if not is_allowed(user.id if user else None):
+        logger.info("handle_message: skip whitelist user_id=%s", user.id if user else None)
         return
     if not _is_addressed_to_bot(update, context):
+        logger.info("handle_message: skip not addressed chat_type=%s", chat.type if chat else None)
         return
-    question = _extract_question(update.message.text, context)
+    question = _extract_question(msg.text, context)
 
     if question.startswith("/") or not question:
+        logger.info("handle_message: skip empty/question")
         return
 
     status_queue = queue.Queue()
@@ -276,7 +289,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     def on_qdrant_status(text: str):
         status_queue.put(text)
 
-    status_msg = await update.message.reply_text("🤔 Думаю...")
+    status_msg = await msg.reply_text("🤔 Думаю...")
 
     history = list(context.chat_data.get("history", []))[-_CHAT_HISTORY_LIMIT:]
     t0 = time.monotonic()
@@ -300,9 +313,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("✅ Готово.")
         formatted = _telegram_markdown(answer)
         try:
-            await update.message.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)
+            await msg.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)
         except BadRequest:
-            await update.message.reply_text(answer)
+            await msg.reply_text(answer)
         # Дополняем историю для следующих вопросов
         h = context.chat_data.setdefault("history", [])
         h.append({"role": "user", "content": question})
@@ -310,7 +323,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data["history"] = h[-_CHAT_HISTORY_LIMIT:]
     except Exception as e:
         answer = f"❌ Ошибка: {str(e)}"
-        await update.message.reply_text(answer)
+        await msg.reply_text(answer)
     finally:
         save_session({
             "ts": datetime.now(timezone.utc).isoformat(),

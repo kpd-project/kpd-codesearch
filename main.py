@@ -1,5 +1,6 @@
-import asyncio
 import logging
+
+import httpx
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 import config
 from bot import (
@@ -43,9 +44,15 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     app.add_error_handler(error_handler)
-    
+
+    # Снимаем webhook — иначе апдейты из групп уходят в старый URL, а не в polling
+    r = httpx.get(
+        f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/deleteWebhook",
+        params={"drop_pending_updates": True},
+    )
+    logger.info("deleteWebhook: %s", r.json())
     logger.info("Bot started!")
-    app.run_polling(allowed_updates=["message", "callback_query"])
+    app.run_polling(allowed_updates=["message", "channel_post", "callback_query"])
 
 
 if __name__ == "__main__":
