@@ -37,7 +37,12 @@ def _save_indexed_path(state_path: Path, repo_name: str, rel_path: str, indexed_
     )
 
 
-def index_repo(repo_name: str, verbose: bool = True, resume: bool = False) -> dict:
+def index_repo(
+    repo_name: str,
+    verbose: bool = True,
+    resume: bool = False,
+    on_progress=None,
+) -> dict:
     t0 = time.perf_counter()
     log = lambda s: print(s) if verbose else None
 
@@ -66,15 +71,20 @@ def index_repo(repo_name: str, verbose: bool = True, resume: bool = False) -> di
     total_vectors = 0
     file_list = sorted(iter_code_files(repo_path), key=lambda p: p.relative_to(repo_path).as_posix())
 
+    total_files = len(file_list)
     for fi, file_path in enumerate(file_list):
         rel_path = file_path.relative_to(repo_path).as_posix()
         if rel_path in indexed_paths:
-            log(f"  skip   [{fi + 1}/{len(file_list)}] {rel_path} (resume)")
+            log(f"  skip   [{fi + 1}/{total_files}] {rel_path} (resume)")
+            if on_progress:
+                on_progress(fi + 1, total_files, rel_path, total_chunks, total_vectors, skipped=True)
             continue
 
         chunks = chunk_file(file_path, repo_name, repo_path)
         if not chunks:
-            log(f"  skip   [{fi + 1}/{len(file_list)}] {rel_path} (no chunks)")
+            log(f"  skip   [{fi + 1}/{total_files}] {rel_path} (no chunks)")
+            if on_progress:
+                on_progress(fi + 1, total_files, rel_path, total_chunks, total_vectors, skipped=True)
             continue
 
         texts = [f"{c['metadata']['repo']}/{c['metadata']['path']}\n{c['content']}" for c in chunks]
@@ -112,7 +122,9 @@ def index_repo(repo_name: str, verbose: bool = True, resume: bool = False) -> di
         _save_indexed_path(state_path, repo_name, rel_path, indexed_paths)
         total_chunks += len(chunks)
         total_vectors += len(vectors)
-        log(f"  + [{fi + 1}/{len(file_list)}] {rel_path} → {len(chunks)} chunks")
+        log(f"  + [{fi + 1}/{total_files}] {rel_path} → {len(chunks)} chunks")
+        if on_progress:
+            on_progress(fi + 1, total_files, rel_path, total_chunks, total_vectors, skipped=False)
 
     elapsed = time.perf_counter() - t0
     log(f"  done   {total_chunks} chunks, {total_vectors} vectors  ({elapsed:.1f}s total)\n")

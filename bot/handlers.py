@@ -1,5 +1,6 @@
 import asyncio
 import queue
+import re
 import time
 from datetime import datetime, timezone
 
@@ -35,6 +36,13 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+def _run_index_with_progress(repo_name: str, resume: bool, progress_queue: queue.Queue) -> dict:
+    """Синхронная обёртка: index_repo в потоке, прогресс в queue."""
+    def on_progress(idx: int, total: int, path: str, chunks: int, vectors: int, skipped: bool):
+        progress_queue.put({"idx": idx, "total": total, "path": path, "chunks": chunks, "vectors": vectors, "skipped": skipped})
+    return rag.index_repo(repo_name, resume=resume, on_progress=on_progress)
+
+
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = _get_command_args(update, context)
     if not args:
@@ -47,21 +55,32 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
         return
     
-    await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
+    progress_queue = queue.Queue()
+    status_msg = await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
     
     try:
-        result = rag.index_repo(repo_name, resume=True)
+        loop = asyncio.get_event_loop()
+        future = loop.run_in_executor(None, lambda: _run_index_with_progress(repo_name, resume=True, progress_queue=progress_queue))
+        while not future.done():
+            try:
+                p = progress_queue.get_nowait()
+                text = _format_index_progress(repo_name, p)
+                await status_msg.edit_text(text)
+            except queue.Empty:
+                pass
+            await asyncio.sleep(0.2)
+        result = future.result()
         if "error" in result:
-            await update.message.reply_text(f"❌ Ошибка: {result['error']}")
+            await status_msg.edit_text(f"❌ Ошибка: {result['error']}")
         else:
-            await update.message.reply_text(
+            await status_msg.edit_text(
                 f"✅ Готово!\n"
                 f"Репо: {result['repo']}\n"
                 f"Чанков: {result['chunks']}\n"
                 f"Векторов: {result['vectors']}"
             )
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
 
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,6 +100,13 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Репозиторий {repo_name} удалён.")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+
+
+def _format_index_progress(repo_name: str, p: dict) -> str:
+    idx, total, path, chunks, vectors = p["idx"], p["total"], p["path"], p["chunks"], p["vectors"]
+    short_path = path if len(path) <= 45 else "..." + path[-42:]
+    mark = "⏭" if p.get("skipped") else "✓"
+    return f"🔄 {repo_name}\n{idx}/{total} файлов · {chunks} чанков · {vectors} векторов\n{mark} {short_path}"
 
 
 def _get_command_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> list:
@@ -111,23 +137,40 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
         return
     
-    await update.message.reply_text(f"🔄 Переиндексирую {repo_name}...")
+    status_msg = await update.message.reply_text(f"🔄 Переиндексирую {repo_name}...")
+    await _run_reindex(status_msg, repo_name)
+
+
+async def _run_reindex(status_msg, repo_name: str):
+    """Общая логика reindex: executor + live progress в сообщении. Бот не блокируется."""
+    progress_queue = queue.Queue()
     
-    try:
+    def do_reindex():
         if rag.collection_exists(repo_name):
             rag.delete_collection(repo_name)
-        
-        result = rag.index_repo(repo_name)
+        return _run_index_with_progress(repo_name, resume=False, progress_queue=progress_queue)
+    
+    try:
+        loop = asyncio.get_event_loop()
+        future = loop.run_in_executor(None, do_reindex)
+        while not future.done():
+            try:
+                p = progress_queue.get_nowait()
+                await status_msg.edit_text(_format_index_progress(repo_name, p))
+            except queue.Empty:
+                pass
+            await asyncio.sleep(0.2)
+        result = future.result()
         if "error" in result:
-            await update.message.reply_text(f"❌ Ошибка: {result['error']}")
+            await status_msg.edit_text(f"❌ Ошибка: {result['error']}")
         else:
-            await update.message.reply_text(
+            await status_msg.edit_text(
                 f"✅ Готово!\n"
                 f"Чанков: {result['chunks']}\n"
                 f"Векторов: {result['vectors']}"
             )
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
+        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
 
 
 async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -140,21 +183,8 @@ async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await query.edit_message_text(f"🔄 Переиндексирую {repo_name}...")
-
-    try:
-        if rag.collection_exists(repo_name):
-            rag.delete_collection(repo_name)
-        result = rag.index_repo(repo_name)
-        if "error" in result:
-            await query.edit_message_text(f"❌ Ошибка: {result['error']}")
-        else:
-            await query.edit_message_text(
-                f"✅ Готово!\n"
-                f"Чанков: {result['chunks']}\n"
-                f"Векторов: {result['vectors']}"
-            )
-    except Exception as e:
-        await query.edit_message_text(f"❌ Ошибка: {str(e)}")
+    status_msg = query.message
+    await _run_reindex(status_msg, repo_name)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,6 +202,14 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Макс. сообщений в контексте диалога для RAG (user + assistant пары)
 _CHAT_HISTORY_LIMIT = 20
+
+
+def _telegram_markdown(text: str) -> str:
+    """**x** → *x* для legacy Markdown; блоки ``` не трогаем."""
+    parts = text.split("```")
+    for i in range(0, len(parts), 2):
+        parts[i] = re.sub(r"\*\*([^*]+)\*\*", r"*\1*", parts[i])
+    return "```".join(parts)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -208,8 +246,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.15)
         answer, session_data = future.result()
         await status_msg.edit_text("✅ Готово.")
+        formatted = _telegram_markdown(answer)
         try:
-            await update.message.reply_text(answer, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)
         except BadRequest:
             await update.message.reply_text(answer)
         # Дополняем историю для следующих вопросов

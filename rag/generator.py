@@ -91,7 +91,7 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
         top_k = min(int(args.get("top_k", 5)), 15)
         if on_status:
             target = f" → {repo}" if repo else " → все репо"
-            on_status(f"🔍 Qdrant: «{query[:80]}{'…' if len(query) > 80 else ''}»{target}")
+            on_status(f"🔍 «{query[:80]}{'…' if len(query) > 80 else ''}»{target}")
 
         if repo:
             results = search_in_repo(repo, query, top_k)
