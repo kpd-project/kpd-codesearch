@@ -76,3 +76,24 @@ RAG_AGENT_TEMPERATURE = float(os.getenv("RAG_AGENT_TEMPERATURE", "0.1"))
 RAG_AGENT_TIMEOUT = int(os.getenv("RAG_AGENT_TIMEOUT", "60"))
 # Длина превью результата tool_call в session log
 RAG_LOG_RESULT_PREVIEW_LEN = int(os.getenv("RAG_LOG_RESULT_PREVIEW_LEN", "300"))
+
+# --- Two-Agent Pipeline ---
+# Feature flag: использовать двухагентный пайплайн
+USE_TWO_AGENT_PIPELINE = os.getenv("USE_TWO_AGENT_PIPELINE", "true").lower() in ("true", "1", "yes")
+
+# Модель для Analyst (аналитик, планировщик поиска)
+ANALYST_MODEL = os.getenv("ANALYST_MODEL", "openrouter/z-ai/glm-4-flash")
+ANALYST_TEMPERATURE = float(os.getenv("ANALYST_TEMPERATURE", "0.3"))
+ANALYST_MAX_TOKENS = int(os.getenv("ANALYST_MAX_TOKENS", "2000"))
+ANALYST_TIMEOUT = int(os.getenv("ANALYST_TIMEOUT", "60"))
+ANALYST_HISTORY_LIMIT = int(os.getenv("ANALYST_HISTORY_LIMIT", "20"))
+
+# Модель для Answerer (эксперт, синтез ответа)
+ANSWERER_MODEL = os.getenv("ANSWERER_MODEL", "openrouter/z-ai/glm-4-plus")
+ANSWERER_TEMPERATURE = float(os.getenv("ANSWERER_TEMPERATURE", "0.1"))
+ANSWERER_MAX_TOKENS = int(os.getenv("ANSWERER_MAX_TOKENS", "3000"))
+ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "90"))
+ANSWERER_HISTORY_LIMIT = int(os.getenv("ANSWERER_HISTORY_LIMIT", "20"))
+
+# Макс. итераций в двухагентном пайплайне
+PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "2"))

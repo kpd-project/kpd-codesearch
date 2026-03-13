@@ -392,10 +392,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        future = loop.run_in_executor(
-            None,
-            lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
-        )
+        if config.USE_TWO_AGENT_PIPELINE:
+            from rag.agent.pipeline import generate_answer_two_agent
+            future = loop.run_in_executor(
+                None,
+                lambda: generate_answer_two_agent(question, history=history, on_status=on_qdrant_status),
+            )
+        else:
+            future = loop.run_in_executor(
+                None,
+                lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
+            )
         while not future.done():
             try:
                 line = status_queue.get_nowait()
