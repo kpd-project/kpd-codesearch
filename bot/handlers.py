@@ -1,4 +1,5 @@
 import asyncio
+import queue
 import time
 from datetime import datetime, timezone
 
@@ -167,22 +168,50 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+# Макс. сообщений в контексте диалога для RAG (user + assistant пары)
+_CHAT_HISTORY_LIMIT = 20
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     question = update.message.text
 
     if question.startswith("/"):
         return
 
-    await update.message.reply_text("🤔 Думаю...")
+    status_queue = queue.Queue()
 
+    def on_qdrant_status(text: str):
+        status_queue.put(text)
+
+    status_msg = await update.message.reply_text("🤔 Думаю...")
+
+    history = list(context.chat_data.get("history", []))[-_CHAT_HISTORY_LIMIT:]
     user = update.effective_user
     t0 = time.monotonic()
     answer = None
     session_data = {}
+    loop = asyncio.get_event_loop()
 
     try:
-        answer, session_data = rag.generate_answer(question)
+        future = loop.run_in_executor(
+            None,
+            lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
+        )
+        while not future.done():
+            try:
+                line = status_queue.get_nowait()
+                await status_msg.edit_text(line)
+            except queue.Empty:
+                pass
+            await asyncio.sleep(0.15)
+        answer, session_data = future.result()
+        await status_msg.edit_text("✅ Готово.")
         await update.message.reply_text(answer)
+        # Дополняем историю для следующих вопросов
+        h = context.chat_data.setdefault("history", [])
+        h.append({"role": "user", "content": question})
+        h.append({"role": "assistant", "content": answer})
+        context.chat_data["history"] = h[-_CHAT_HISTORY_LIMIT:]
     except Exception as e:
         answer = f"❌ Ошибка: {str(e)}"
         await update.message.reply_text(answer)
