@@ -5,6 +5,34 @@ from pathlib import Path
 from .base import get_language, get_ts_grammar, read_file_content, SEMANTIC_LANGUAGES
 
 
+def _patch_chunker_registry_cache():
+    """Патч: treesitter-chunker не кэширует языки из tree-sitter-language-pack,
+    из-за чего при каждом файле заново грузится grammar. Кэшируем результат.
+    """
+    try:
+        from chunker._internal.registry import LanguageRegistry
+
+        _orig_try_load = LanguageRegistry._try_load_from_language_pack
+
+        def _cached_try_load(self, name: str):
+            if name in self._languages:
+                lang, meta = self._languages[name]
+                if lang is not None:
+                    return lang
+            lang = _orig_try_load(self, name)
+            if lang is not None:
+                from chunker._internal.registry import LanguageMetadata
+                self._languages[name] = (lang, LanguageMetadata(name=name))
+            return lang
+
+        LanguageRegistry._try_load_from_language_pack = _cached_try_load
+    except Exception:
+        pass  # chunker может быть не установлен
+
+
+_patch_chunker_registry_cache()
+
+
 def _extract_content(chunk, source: str) -> str:
     text = getattr(chunk, "content", None) or getattr(chunk, "text", None)
     if text:
