@@ -17,16 +17,17 @@ def search_in_repo(repo_name: str, query: str, top_k: int = 5) -> list[dict]:
         query=query_vector,
         limit=top_k,
     )
-    MIN_SCORE = 0.55
+    min_score = config.RAG_MIN_SCORE
     return [
         {
             "content": r.payload.get("content", ""),
             "path": r.payload.get("path", ""),
             "language": r.payload.get("language", ""),
+            "type": r.payload.get("type", ""),
             "score": r.score,
         }
         for r in resp.points
-        if r.score >= MIN_SCORE
+        if min_score <= 0 or r.score >= min_score
     ]
 
 
@@ -41,4 +42,4 @@ def search_all_repos(query: str, top_k: int = 3) -> list[dict]:
             all_results.extend(results)
     
     all_results.sort(key=lambda x: x["score"], reverse=True)
-    return all_results[:10]
+    return all_results[:config.RAG_SEARCH_ALL_LIMIT]

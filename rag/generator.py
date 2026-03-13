@@ -37,7 +37,8 @@ TOOLS = [
             "description": (
                 "Поиск по проиндексированным репозиториям KPD. "
                 "Можно искать в конкретном репо или по всем сразу. "
-                "Вызывай несколько раз с разными формулировками запроса для лучшего результата."
+                "Вызывай несколько раз с разными формулировками запроса для лучшего результата. "
+                "Для широких вопросов используй top_k ближе к максимуму — вернётся больше релевантных сниппетов (код полный, без обрезки)."
             ),
             "parameters": {
                 "type": "object",
@@ -108,8 +109,12 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
             score = r.get("score", 0)
             path = r.get("path", "")
             repo_name = r.get("repo", "")
-            content = r.get("content", "")[:config.RAG_CHUNK_DISPLAY_CHARS]
-            parts.append(f"[score={score:.2f}] {repo_name}: {path}\n{content}")
+            content = r.get("content", "")
+            if config.RAG_CHUNK_DISPLAY_CHARS > 0:
+                content = content[:config.RAG_CHUNK_DISPLAY_CHARS]
+            typ = r.get("type", "")
+            type_hint = f" [{typ}]" if typ else ""
+            parts.append(f"[score={score:.2f}] {repo_name}: {path}{type_hint}\n{content}")
 
         return "\n\n---\n\n".join(parts)
 

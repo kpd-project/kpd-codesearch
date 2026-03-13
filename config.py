@@ -47,12 +47,16 @@ LOG_ROTATION = int(os.getenv("LOG_ROTATION", "10"))
 # --- RAG Agent (generator.py) ---
 # Макс. итераций агентного цикла (поиск → LLM → tool_call → ...)
 RAG_AGENT_MAX_ITERATIONS = int(os.getenv("RAG_AGENT_MAX_ITERATIONS", "10"))
-# Макс. символов чанка в ответе поиска (обрезание для компактности)
-RAG_CHUNK_DISPLAY_CHARS = int(os.getenv("RAG_CHUNK_DISPLAY_CHARS", "1200"))
+# Макс. символов чанка в ответе поиска (0 = без обрезки, передавать полный content)
+RAG_CHUNK_DISPLAY_CHARS = int(os.getenv("RAG_CHUNK_DISPLAY_CHARS", "0"))
 # Топ-K результатов по умолчанию при вызове search_code
 RAG_SEARCH_TOP_K = int(os.getenv("RAG_SEARCH_TOP_K", "10"))
 # Верхняя граница top_k (LLM не может запросить больше)
 RAG_SEARCH_TOP_K_MAX = int(os.getenv("RAG_SEARCH_TOP_K_MAX", "15"))
+# Порог score для включения результата (ниже — отбрасываем, 0 = брать все)
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.5"))
+# Макс. результатов при поиске по всем репо (объединённый топ)
+RAG_SEARCH_ALL_LIMIT = int(os.getenv("RAG_SEARCH_ALL_LIMIT", "15"))
 # max_tokens в цикле агента (с tool_calls)
 RAG_AGENT_MAX_TOKENS = int(os.getenv("RAG_AGENT_MAX_TOKENS", "10000"))
 # max_tokens для финального ответа без инструментов
