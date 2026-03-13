@@ -320,7 +320,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             await asyncio.sleep(0.15)
         answer, session_data = future.result()
-        await _safe_edit_text(status_msg, "✅ Готово.")
+        status_text = "✅ Готово."
+        usage = session_data.get("usage") or {}
+        pt, ct, tt = usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("total_tokens")
+        if (pt or 0) > 0 or (ct or 0) > 0:
+            status_text = f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
+        await _safe_edit_text(status_msg, status_text)
         formatted = _telegram_markdown(answer)
         try:
             await msg.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)

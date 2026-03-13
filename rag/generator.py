@@ -155,6 +155,12 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
 
     max_iterations = config.RAG_AGENT_MAX_ITERATIONS
     tool_calls_log: list[dict] = []
+    usage_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def _add_usage(data: dict) -> None:
+        u = data.get("usage") or {}
+        for k in usage_total:
+            usage_total[k] += u.get(k) or 0
 
     for iteration in range(max_iterations):
         try:
@@ -176,20 +182,21 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
             )
         except Exception as e:
             answer = f"Ошибка сети: {e}"
-            return answer, _make_session_data(tool_calls_log, iteration + 1)
+            return answer, _make_session_data(tool_calls_log, iteration + 1, usage_total)
 
         if response.status_code != 200:
             answer = f"Ошибка API ({response.status_code}): {response.text}"
-            return answer, _make_session_data(tool_calls_log, iteration + 1)
+            return answer, _make_session_data(tool_calls_log, iteration + 1, usage_total)
 
         data = response.json()
+        _add_usage(data)
         choice = data["choices"][0]
         msg = choice["message"]
 
         # Финальный ответ — нет вызовов инструментов
         if not msg.get("tool_calls"):
             answer = msg.get("content") or "Нет ответа"
-            return answer, _make_session_data(tool_calls_log, iteration + 1)
+            return answer, _make_session_data(tool_calls_log, iteration + 1, usage_total)
 
         # Добавляем ответ ассистента с tool_calls в историю
         messages.append(msg)
@@ -237,16 +244,21 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
             },
             timeout=config.RAG_AGENT_TIMEOUT,
         )
-        answer = response.json()["choices"][0]["message"].get("content") or "Не удалось подвести итог по найденным данным."
-        return answer, _make_session_data(tool_calls_log, max_iterations)
+        data = response.json()
+        _add_usage(data)
+        answer = data["choices"][0]["message"].get("content") or "Не удалось подвести итог по найденным данным."
+        return answer, _make_session_data(tool_calls_log, max_iterations, usage_total)
     except Exception as e:
         answer = f"Ошибка финального ответа: {e}"
-        return answer, _make_session_data(tool_calls_log, max_iterations)
+        return answer, _make_session_data(tool_calls_log, max_iterations, usage_total)
 
 
-def _make_session_data(tool_calls_log: list[dict], iterations: int) -> dict:
-    return {
+def _make_session_data(tool_calls_log: list[dict], iterations: int, usage: dict | None = None) -> dict:
+    data = {
         "model": config.OPENROUTER_MODEL,
         "iterations": iterations,
         "tool_calls": tool_calls_log,
     }
+    if usage:
+        data["usage"] = usage
+    return data
