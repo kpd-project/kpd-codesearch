@@ -8,12 +8,14 @@ import config
 import rag
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
+from telegram.constants import ChatType, MessageEntityType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update.effective_user and update.effective_user.id):
+        return
     await update.message.reply_text(
         "👋 Привет! Я бот для работы с кодовой базой KPD.\n\n"
         "Доступные команды:\n"
@@ -22,7 +24,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/remove <repo> - Удалить репозиторий\n"
         "/reindex <repo> - Переиндексировать репозиторий\n"
         "/status - Статус всех коллекций\n\n"
-        "Просто напиши вопрос - и я отвечу на основе кода!"
+        "Просто напиши вопрос — и я отвечу на основе кода!\n\n"
+        "В группе: напиши @бот вопрос — бот ответит только при упоминании."
     )
 
 
@@ -212,10 +215,37 @@ def _telegram_markdown(text: str) -> str:
     return "```".join(parts)
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    question = update.message.text
+def _is_addressed_to_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """В группах — только при упоминании бота; в личке — всегда."""
+    chat = update.message.chat
+    if chat.type == ChatType.PRIVATE:
+        return True
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return False
+    bot = context.bot
+    bot_username = (bot.username or "").lower()
+    for ent in (update.message.entities or []):
+        if ent.type == MessageEntityType.MENTION:
+            mention = update.message.text[ent.offset : ent.offset + ent.length].lstrip("@").lower()
+            if mention == bot_username:
+                return True
+        elif ent.type == MessageEntityType.TEXT_MENTION and ent.user and ent.user.id == bot.id:
+            return True
+    return False
 
-    if question.startswith("/"):
+
+def _extract_question(text: str, context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Убирает упоминание бота из текста сообщения."""
+    bot_username = (context.bot.username or "").lower()
+    return re.sub(rf"\s*@{re.escape(bot_username)}\s*", " ", text, flags=re.IGNORECASE).strip()
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_addressed_to_bot(update, context):
+        return
+    question = _extract_question(update.message.text, context)
+
+    if question.startswith("/") or not question:
         return
 
     status_queue = queue.Queue()
@@ -271,10 +301,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
 
 
-def is_allowed(user_id: int) -> bool:
+def is_allowed(user_id: int | None) -> bool:
     if not config.TELEGRAM_WHITELIST_USERS:
         return True
-    return str(user_id) in config.TELEGRAM_WHITELIST_USERS
+    return user_id is not None and str(user_id) in config.TELEGRAM_WHITELIST_USERS
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
