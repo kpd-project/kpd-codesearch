@@ -1,4 +1,4 @@
-from .indexer import index_repo
+from .indexer import index_repo, index_repo_async
 from .generator import generate_answer
 from .retriever import search_all_repos, search_in_repo
 from .qdrant_client import (
@@ -12,6 +12,7 @@ from .qdrant_client import (
 
 __all__ = [
     "index_repo",
+    "index_repo_async",
     "generate_answer",
     "search_all_repos",
     "search_in_repo",

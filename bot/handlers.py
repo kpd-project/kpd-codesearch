@@ -56,11 +56,14 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
-def _run_index_with_progress(repo_name: str, resume: bool, progress_queue: queue.Queue) -> dict:
-    """Синхронная обёртка: index_repo в потоке, прогресс в queue."""
+async def _run_index_async(repo_name: str, resume: bool, progress_queue: queue.Queue) -> dict:
+    progress_values = {"idx": 0, "total": 0, "path": "", "chunks": 0, "vectors": 0, "skipped": False}
+
     def on_progress(idx: int, total: int, path: str, chunks: int, vectors: int, skipped: bool):
-        progress_queue.put({"idx": idx, "total": total, "path": path, "chunks": chunks, "vectors": vectors, "skipped": skipped})
-    return rag.index_repo(repo_name, resume=resume, on_progress=on_progress)
+        progress_values.update({"idx": idx, "total": total, "path": path, "chunks": chunks, "vectors": vectors, "skipped": skipped})
+        progress_queue.put(dict(progress_values))
+
+    return await rag.index_repo_async(repo_name, resume=resume, on_progress=on_progress)
 
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,11 +83,10 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     progress_queue = queue.Queue()
     status_msg = await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
-    
+
     try:
-        loop = asyncio.get_event_loop()
-        future = loop.run_in_executor(None, lambda: _run_index_with_progress(repo_name, resume=True, progress_queue=progress_queue))
-        while not future.done():
+        index_task = asyncio.create_task(_run_index_async(repo_name, resume=True, progress_queue=progress_queue))
+        while not index_task.done():
             try:
                 p = progress_queue.get_nowait()
                 text = _format_index_progress(repo_name, p)
@@ -92,7 +94,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except queue.Empty:
                 pass
             await asyncio.sleep(0.2)
-        result = future.result()
+        result = index_task.result()
         if "error" in result:
             await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:
@@ -171,25 +173,21 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _run_reindex(status_msg, repo_name: str):
-    """Общая логика reindex: executor + live progress в сообщении. Бот не блокируется."""
     progress_queue = queue.Queue()
-    
-    def do_reindex():
+
+    try:
         if rag.collection_exists(repo_name):
             rag.delete_collection(repo_name)
-        return _run_index_with_progress(repo_name, resume=False, progress_queue=progress_queue)
-    
-    try:
-        loop = asyncio.get_event_loop()
-        future = loop.run_in_executor(None, do_reindex)
-        while not future.done():
+
+        index_task = asyncio.create_task(_run_index_async(repo_name, resume=False, progress_queue=progress_queue))
+        while not index_task.done():
             try:
                 p = progress_queue.get_nowait()
                 await _safe_edit_text(status_msg, _format_index_progress(repo_name, p))
             except queue.Empty:
                 pass
             await asyncio.sleep(0.2)
-        result = future.result()
+        result = index_task.result()
         if "error" in result:
             await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:

@@ -38,6 +38,15 @@ FILE_MAX_SIZE = int(os.getenv("FILE_MAX_SIZE", "2_000_000"))
 # Макс. символов в одном батче эмбеддингов (~4 символа ≈ 1 токен)
 EMBED_MAX_CHARS_PER_BATCH = int(os.getenv("EMBED_MAX_CHARS_PER_BATCH", "8000"))
 
+# Макс. параллельных запросов к эмбеддингам (rate limiting)
+EMBED_MAX_CONCURRENT = int(os.getenv("EMBED_MAX_CONCURRENT", "10"))
+
+# Макс. параллельно обрабатываемых файлов
+EMBED_MAX_FILES_CONCURRENT = int(os.getenv("EMBED_MAX_FILES_CONCURRENT", "5"))
+
+# Таймаут HTTP-запроса для эмбеддингов (сек)
+EMBED_REQUEST_TIMEOUT = int(os.getenv("EMBED_REQUEST_TIMEOUT", "60"))
+
 # Размер батча для upsert (избежание 413 nginx)
 QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "200"))
 
