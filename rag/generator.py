@@ -55,8 +55,8 @@ TOOLS = [
                     },
                     "top_k": {
                         "type": "integer",
-                        "description": "Количество результатов (по умолчанию 5, максимум 15)",
-                        "default": 5,
+                        "description": f"Количество результатов (по умолчанию {config.RAG_SEARCH_TOP_K}, максимум {config.RAG_SEARCH_TOP_K_MAX})",
+                        "default": config.RAG_SEARCH_TOP_K,
                     },
                 },
                 "required": ["query"],
@@ -88,7 +88,7 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
     if name == "search_code":
         query = args.get("query", "")
         repo = args.get("repo")
-        top_k = min(int(args.get("top_k", 5)), 15)
+        top_k = min(int(args.get("top_k", config.RAG_SEARCH_TOP_K)), config.RAG_SEARCH_TOP_K_MAX)
         if on_status:
             target = f" → {repo}" if repo else " → все репо"
             on_status(f"🔍 «{query[:80]}{'…' if len(query) > 80 else ''}»{target}")
@@ -103,13 +103,12 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
         if not results:
             return f"По запросу «{query}» ничего не найдено."
 
-        MAX_CHUNK_CHARS = 800
         parts = []
         for r in results:
             score = r.get("score", 0)
             path = r.get("path", "")
             repo_name = r.get("repo", "")
-            content = r.get("content", "")[:MAX_CHUNK_CHARS]
+            content = r.get("content", "")[:config.RAG_CHUNK_DISPLAY_CHARS]
             parts.append(f"[score={score:.2f}] {repo_name}: {path}\n{content}")
 
         return "\n\n---\n\n".join(parts)
@@ -137,7 +136,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
     if repo_name:
         messages[-1]["content"] = f"{question}\n\n(Ищи в репозитории: {repo_name})"
 
-    max_iterations = 6
+    max_iterations = config.RAG_AGENT_MAX_ITERATIONS
     tool_calls_log: list[dict] = []
 
     for iteration in range(max_iterations):
@@ -153,10 +152,10 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
                     "messages": messages,
                     "tools": TOOLS,
                     "tool_choice": "auto",
-                    "max_tokens": 3000,
-                    "temperature": 0.2,
+                    "max_tokens": config.RAG_AGENT_MAX_TOKENS,
+                    "temperature": config.RAG_AGENT_TEMPERATURE,
                 },
-                timeout=60,
+                timeout=config.RAG_AGENT_TIMEOUT,
             )
         except Exception as e:
             answer = f"Ошибка сети: {e}"
@@ -191,7 +190,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
             tool_calls_log.append({
                 "tool": tool_name,
                 "args": tool_args,
-                "result_preview": tool_result[:300] if tool_result else "",
+                "result_preview": tool_result[:config.RAG_LOG_RESULT_PREVIEW_LEN] if tool_result else "",
                 "result_len": len(tool_result),
             })
 
@@ -216,10 +215,10 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
             json={
                 "model": config.OPENROUTER_MODEL,
                 "messages": messages,
-                "max_tokens": 2000,
-                "temperature": 0.2,
+                "max_tokens": config.RAG_AGENT_FINAL_MAX_TOKENS,
+                "temperature": config.RAG_AGENT_TEMPERATURE,
             },
-            timeout=60,
+            timeout=config.RAG_AGENT_TIMEOUT,
         )
         answer = response.json()["choices"][0]["message"].get("content") or "Не удалось подвести итог по найденным данным."
         return answer, _make_session_data(tool_calls_log, max_iterations)

@@ -13,6 +13,16 @@ from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest
+
+async def _safe_edit_text(msg, text: str) -> bool:
+    """Редактирует сообщение; игнорирует Telegram 'Message is not modified'."""
+    try:
+        await msg.edit_text(text)
+        return True
+    except BadRequest as e:
+        if "not modified" in str(e).lower():
+            return False  # Тот же текст — ничего не делаем
+        raise
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 
@@ -78,22 +88,22 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 p = progress_queue.get_nowait()
                 text = _format_index_progress(repo_name, p)
-                await status_msg.edit_text(text)
+                await _safe_edit_text(status_msg, text)
             except queue.Empty:
                 pass
             await asyncio.sleep(0.2)
         result = future.result()
         if "error" in result:
-            await status_msg.edit_text(f"❌ Ошибка: {result['error']}")
+            await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:
-            await status_msg.edit_text(
+            await _safe_edit_text(status_msg,
                 f"✅ Готово!\n"
                 f"Репо: {result['repo']}\n"
                 f"Чанков: {result['chunks']}\n"
                 f"Векторов: {result['vectors']}"
             )
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+        await _safe_edit_text(status_msg, f"❌ Ошибка: {str(e)}")
 
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,21 +185,21 @@ async def _run_reindex(status_msg, repo_name: str):
         while not future.done():
             try:
                 p = progress_queue.get_nowait()
-                await status_msg.edit_text(_format_index_progress(repo_name, p))
+                await _safe_edit_text(status_msg, _format_index_progress(repo_name, p))
             except queue.Empty:
                 pass
             await asyncio.sleep(0.2)
         result = future.result()
         if "error" in result:
-            await status_msg.edit_text(f"❌ Ошибка: {result['error']}")
+            await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:
-            await status_msg.edit_text(
+            await _safe_edit_text(status_msg,
                 f"✅ Готово!\n"
                 f"Чанков: {result['chunks']}\n"
                 f"Векторов: {result['vectors']}"
             )
     except Exception as e:
-        await status_msg.edit_text(f"❌ Ошибка: {str(e)}")
+        await _safe_edit_text(status_msg, f"❌ Ошибка: {str(e)}")
 
 
 async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,12 +315,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         while not future.done():
             try:
                 line = status_queue.get_nowait()
-                await status_msg.edit_text(line)
+                await _safe_edit_text(status_msg, line)
             except queue.Empty:
                 pass
             await asyncio.sleep(0.15)
         answer, session_data = future.result()
-        await status_msg.edit_text("✅ Готово.")
+        await _safe_edit_text(status_msg, "✅ Готово.")
         formatted = _telegram_markdown(answer)
         try:
             await msg.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)

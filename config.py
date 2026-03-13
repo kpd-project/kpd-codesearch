@@ -43,3 +43,23 @@ QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "200"))
 
 # Количество последних сессий в logs/ (ротация)
 LOG_ROTATION = int(os.getenv("LOG_ROTATION", "10"))
+
+# --- RAG Agent (generator.py) ---
+# Макс. итераций агентного цикла (поиск → LLM → tool_call → ...)
+RAG_AGENT_MAX_ITERATIONS = int(os.getenv("RAG_AGENT_MAX_ITERATIONS", "10"))
+# Макс. символов чанка в ответе поиска (обрезание для компактности)
+RAG_CHUNK_DISPLAY_CHARS = int(os.getenv("RAG_CHUNK_DISPLAY_CHARS", "1200"))
+# Топ-K результатов по умолчанию при вызове search_code
+RAG_SEARCH_TOP_K = int(os.getenv("RAG_SEARCH_TOP_K", "10"))
+# Верхняя граница top_k (LLM не может запросить больше)
+RAG_SEARCH_TOP_K_MAX = int(os.getenv("RAG_SEARCH_TOP_K_MAX", "15"))
+# max_tokens в цикле агента (с tool_calls)
+RAG_AGENT_MAX_TOKENS = int(os.getenv("RAG_AGENT_MAX_TOKENS", "10000"))
+# max_tokens для финального ответа без инструментов
+RAG_AGENT_FINAL_MAX_TOKENS = int(os.getenv("RAG_AGENT_FINAL_MAX_TOKENS", "3000"))
+# temperature для LLM (0–1, меньше = детерминированнее)
+RAG_AGENT_TEMPERATURE = float(os.getenv("RAG_AGENT_TEMPERATURE", "0.1"))
+# Таймаут HTTP-запросов к OpenRouter (сек)
+RAG_AGENT_TIMEOUT = int(os.getenv("RAG_AGENT_TIMEOUT", "60"))
+# Длина превью результата tool_call в session log
+RAG_LOG_RESULT_PREVIEW_LEN = int(os.getenv("RAG_LOG_RESULT_PREVIEW_LEN", "300"))
