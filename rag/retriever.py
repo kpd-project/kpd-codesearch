@@ -4,7 +4,7 @@ from .embeddings import get_embeddings
 from .qdrant_client import get_client, collection_exists
 
 
-def search_in_repo(repo_name: str, query: str, top_k: int = 5) -> list[dict]:
+def search_in_repo(repo_name: str, query: str, top_k: int = 5, min_score: float | None = None) -> list[dict]:
     if not collection_exists(repo_name):
         return []
     
@@ -17,7 +17,7 @@ def search_in_repo(repo_name: str, query: str, top_k: int = 5) -> list[dict]:
         query=query_vector,
         limit=top_k,
     )
-    min_score = config.RAG_MIN_SCORE
+    threshold = min_score if min_score is not None else config.RAG_MIN_SCORE
     return [
         {
             "content": r.payload.get("content", ""),
@@ -27,16 +27,16 @@ def search_in_repo(repo_name: str, query: str, top_k: int = 5) -> list[dict]:
             "score": r.score,
         }
         for r in resp.points
-        if min_score <= 0 or r.score >= min_score
+        if threshold <= 0 or r.score >= threshold
     ]
 
 
-def search_all_repos(query: str, top_k: int = 3) -> list[dict]:
+def search_all_repos(query: str, top_k: int = 3, min_score: float | None = None) -> list[dict]:
     all_results = []
     
     for repo_name in config.REPOS_WHITELIST:
         if collection_exists(repo_name):
-            results = search_in_repo(repo_name, query, top_k)
+            results = search_in_repo(repo_name, query, top_k, min_score)
             for r in results:
                 r["repo"] = repo_name
             all_results.extend(results)

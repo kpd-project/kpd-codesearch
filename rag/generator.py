@@ -59,6 +59,13 @@ TOOLS = [
                         "description": f"Количество результатов (по умолчанию {config.RAG_SEARCH_TOP_K}, максимум {config.RAG_SEARCH_TOP_K_MAX})",
                         "default": config.RAG_SEARCH_TOP_K,
                     },
+                    "min_score": {
+                        "type": "number",
+                        "description": (
+                            f"Порог релевантности 0–1 (ниже — отбрасывать). 0 = брать всё. "
+                            f"По умолчанию {config.RAG_MIN_SCORE}. Снизь при пустом поиске."
+                        ),
+                    },
                 },
                 "required": ["query"],
             },
@@ -90,16 +97,21 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
         query = args.get("query", "")
         repo = args.get("repo")
         top_k = min(int(args.get("top_k", config.RAG_SEARCH_TOP_K)), config.RAG_SEARCH_TOP_K_MAX)
+        min_score_arg = args.get("min_score")
+        try:
+            min_score = max(0, min(1, float(min_score_arg))) if min_score_arg is not None else None
+        except (TypeError, ValueError):
+            min_score = None
         if on_status:
             target = f" → {repo}" if repo else " → все репо"
             on_status(f"🔍 «{query[:80]}{'…' if len(query) > 80 else ''}»{target}")
 
         if repo:
-            results = search_in_repo(repo, query, top_k)
+            results = search_in_repo(repo, query, top_k, min_score)
             for r in results:
                 r["repo"] = repo
         else:
-            results = search_all_repos(query, top_k)
+            results = search_all_repos(query, top_k, min_score)
 
         if not results:
             return f"По запросу «{query}» ничего не найдено."
