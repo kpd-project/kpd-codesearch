@@ -272,24 +272,45 @@ def _telegram_html(text: str) -> str:
                 i = end + 1
                 continue
         
-        # Bold: *...*
+        # Bold: *...* (но не ** и не в начале строки как маркер списка)
         if char == "*":
-            # Find matching * (not **)
-            end = text.find("*", i + 1)
-            if end != -1 and end > i + 1 and text[i + 1] != "*":
-                bold_content = text[i + 1:end]
-                result.append(f"<b>{html_escape(bold_content)}</b>")
-                i = end + 1
+            # Skip ** (double asterisk)
+            if i + 1 < len(text) and text[i + 1] == "*":
+                result.append("*")
+                i += 1
                 continue
+            
+            # Skip * at start of line (list marker)
+            prev_char = text[i - 1] if i > 0 else "\n"
+            if prev_char == "\n" or (i == 0):
+                result.append("*")
+                i += 1
+                continue
+            
+            # Find matching * (must be on same line, no newline inside)
+            end = text.find("*", i + 1)
+            if end != -1 and end > i + 1:
+                bold_content = text[i + 1:end]
+                # Don't allow newlines inside bold
+                if "\n" not in bold_content:
+                    result.append(f"<b>{html_escape(bold_content)}</b>")
+                    i = end + 1
+                    continue
+            
+            # No matching * or invalid — just output the character
+            result.append("*")
+            i += 1
+            continue
         
-        # Italic: _..._
+        # Italic: _..._ (must be on same line)
         if char == "_":
             end = text.find("_", i + 1)
             if end != -1 and end > i + 1:
                 italic_content = text[i + 1:end]
-                result.append(f"<i>{html_escape(italic_content)}</i>")
-                i = end + 1
-                continue
+                if "\n" not in italic_content:
+                    result.append(f"<i>{html_escape(italic_content)}</i>")
+                    i = end + 1
+                    continue
         
         # Escape special chars
         if char == "&":
