@@ -7,6 +7,8 @@ import config
 import rag
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 
@@ -206,7 +208,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.15)
         answer, session_data = future.result()
         await status_msg.edit_text("✅ Готово.")
-        await update.message.reply_text(answer)
+        try:
+            await update.message.reply_text(answer, parse_mode=ParseMode.MARKDOWN)
+        except BadRequest:
+            await update.message.reply_text(answer)
         # Дополняем историю для следующих вопросов
         h = context.chat_data.setdefault("history", [])
         h.append({"role": "user", "content": question})

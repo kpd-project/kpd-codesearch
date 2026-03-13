@@ -9,10 +9,11 @@ TELEGRAM_WHITELIST_USERS = set(
     u.strip() for u in os.getenv("TELEGRAM_WHITELIST_USERS", "").split(",") if u.strip()
 )
 
+OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
 
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "openai/text-embedding-3-small")
 EMBEDDINGS_DIMENSION = int(os.getenv("EMBEDDINGS_DIMENSION", "1536"))
 
 QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.gotskin.ru")

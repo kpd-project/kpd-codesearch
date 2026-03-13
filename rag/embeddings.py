@@ -1,20 +1,34 @@
-import warnings
+"""Эмбеддинги через OpenRouter API. Прямой вызов без LangChain — без tiktoken и зависаний."""
 
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain")
+from openai import OpenAI
 
-from langchain_community.embeddings import OpenAIEmbeddings
 import config
 
 EMBEDDINGS = None
 
+
 def get_embeddings():
+    """Совместимый с LangChain объект: embed_query(s) и embed_documents(texts)."""
     global EMBEDDINGS
     if EMBEDDINGS is None:
-        EMBEDDINGS = OpenAIEmbeddings(
-            model=config.EMBEDDINGS_MODEL,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=config.OPENROUTER_API_KEY,
-            # dimensions не передаём — OpenRouter его игнорирует/отклоняет,
-            # text-embedding-3-small возвращает 1536 по умолчанию
+        model = config.EMBEDDINGS_MODEL
+        if model == "text-embedding-3-small":
+            model = "openai/text-embedding-3-small"
+        client = OpenAI(
+            api_key=config.OPENROUTER_API_KEY,
+            base_url=config.OPENROUTER_API_URL.rstrip("/"),
         )
+
+        class OpenRouterEmbeddings:
+            def embed_query(self, text: str) -> list[float]:
+                r = client.embeddings.create(model=model, input=text)
+                return r.data[0].embedding
+
+            def embed_documents(self, texts: list[str]) -> list[list[float]]:
+                if not texts:
+                    return []
+                r = client.embeddings.create(model=model, input=texts)
+                return [d.embedding for d in sorted(r.data, key=lambda x: x.index)]
+
+        EMBEDDINGS = OpenRouterEmbeddings()
     return EMBEDDINGS

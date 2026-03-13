@@ -50,6 +50,7 @@ TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_WHITELIST_USERS=123456789
 
 # OpenRouter
+OPENROUTER_API_URL=https://openrouter.ai/api/v1
 OPENROUTER_API_KEY=your_openrouter_key
 OPENROUTER_MODEL=google/gemini-2.0-flash-001
 
