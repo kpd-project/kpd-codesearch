@@ -14,7 +14,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_allowed(update.effective_user and update.effective_user.id):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
         return
     await update.message.reply_text(
         "👋 Привет! Я бот для работы с кодовой базой KPD.\n\n"
@@ -30,6 +31,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     repos = config.REPOS_WHITELIST
     text = "📁 Доступные репозитории:\n\n"
     for repo in repos:
@@ -47,6 +51,9 @@ def _run_index_with_progress(repo_name: str, resume: bool, progress_queue: queue
 
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     args = _get_command_args(update, context)
     if not args:
         await update.message.reply_text("Usage: /add <repo_name>")
@@ -87,6 +94,9 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     args = _get_command_args(update, context)
     if not args:
         await update.message.reply_text("Usage: /remove <repo_name>")
@@ -122,6 +132,9 @@ def _get_command_args(update: Update, context: ContextTypes.DEFAULT_TYPE) -> lis
 
 
 async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     args = _get_command_args(update, context)
     if not args:
         keyboard = [
@@ -177,6 +190,10 @@ async def _run_reindex(status_msg, repo_name: str):
 
 
 async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        await update.callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
     query = update.callback_query
     await query.answer()
     repo_name = query.data.split(":", 1)[1]
@@ -191,6 +208,9 @@ async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     text = "📊 Статус коллекций:\n\n"
     
     for repo in config.REPOS_WHITELIST:
@@ -241,6 +261,9 @@ def _extract_question(text: str, context: ContextTypes.DEFAULT_TYPE) -> str:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
     if not _is_addressed_to_bot(update, context):
         return
     question = _extract_question(update.message.text, context)
@@ -256,7 +279,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("🤔 Думаю...")
 
     history = list(context.chat_data.get("history", []))[-_CHAT_HISTORY_LIMIT:]
-    user = update.effective_user
     t0 = time.monotonic()
     answer = None
     session_data = {}
