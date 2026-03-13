@@ -1,41 +1,58 @@
 """Эмбеддинги через OpenRouter API. Прямой вызов без LangChain — без tiktoken и зависаний."""
 
 import asyncio
-from openai import AsyncOpenAI
+import logging
+from openai import OpenAI, AsyncOpenAI
 import httpx
 
 import config
+
+logger = logging.getLogger(__name__)
 
 EMBEDDINGS = None
 ASYNC_EMBEDDINGS = None
 
 
 def get_embeddings():
-    """Синхронный интерфейс: embed_query(s) и embed_documents(texts)."""
+    """Синхронный интерфейс: embed_query(s) и embed_documents(texts).
+    
+    Использует синхронный OpenAI клиент — безопасно для вызова из executor'а.
+    """
     global EMBEDDINGS
     if EMBEDDINGS is None:
         model = config.EMBEDDINGS_MODEL
         if model == "text-embedding-3-small":
             model = "openai/text-embedding-3-small"
 
+        # Создаём один синхронный клиент — не требует event loop
+        client = OpenAI(
+            api_key=config.OPENROUTER_API_KEY,
+            base_url=config.OPENROUTER_API_URL.rstrip("/"),
+            timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+        )
+
         class OpenRouterEmbeddings:
             def embed_query(self, text: str):
-                client = AsyncOpenAI(
-                    api_key=config.OPENROUTER_API_KEY,
-                    base_url=config.OPENROUTER_API_URL.rstrip("/"),
-                )
-                r = asyncio.run(client.embeddings.create(model=model, input=text))
-                return r.data[0].embedding
+                logger.debug("embed_query: len=%d", len(text))
+                try:
+                    r = client.embeddings.create(model=model, input=text)
+                    logger.debug("embed_query: done")
+                    return r.data[0].embedding
+                except Exception as e:
+                    logger.error("embed_query failed: %s", e)
+                    raise
 
             def embed_documents(self, texts: list[str]):
                 if not texts:
                     return []
-                client = AsyncOpenAI(
-                    api_key=config.OPENROUTER_API_KEY,
-                    base_url=config.OPENROUTER_API_URL.rstrip("/"),
-                )
-                r = asyncio.run(client.embeddings.create(model=model, input=texts))
-                return [d.embedding for d in sorted(r.data, key=lambda x: x.index)]
+                logger.debug("embed_documents: count=%d", len(texts))
+                try:
+                    r = client.embeddings.create(model=model, input=texts)
+                    logger.debug("embed_documents: done")
+                    return [d.embedding for d in sorted(r.data, key=lambda x: x.index)]
+                except Exception as e:
+                    logger.error("embed_documents failed: %s", e)
+                    raise
 
         EMBEDDINGS = OpenRouterEmbeddings()
     return EMBEDDINGS

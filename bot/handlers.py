@@ -13,6 +13,7 @@ from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest
+# html_escape defined below
 
 async def _safe_edit_text(msg, text: str) -> bool:
     """Редактирует сообщение; игнорирует Telegram 'Message is not modified'."""
@@ -238,12 +239,76 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 _CHAT_HISTORY_LIMIT = 20
 
 
-def _telegram_markdown(text: str) -> str:
-    """**x** → *x* для legacy Markdown; блоки ``` не трогаем."""
-    parts = text.split("```")
-    for i in range(0, len(parts), 2):
-        parts[i] = re.sub(r"\*\*([^*]+)\*\*", r"*\1*", parts[i])
-    return "```".join(parts)
+def _telegram_html(text: str) -> str:
+    """Подготовка текста для Telegram HTML.
+    
+    - Конвертирует *bold* → <b>bold</b>
+    - Конвертирует _italic_ → <i>italic</i>
+    - Конвертирует `code` → <code>code</code>
+    - Блоки ```...``` → <pre>...</pre>
+    - Экранирует <, >, & в обычном тексте
+    """
+    result = []
+    i = 0
+    
+    while i < len(text):
+        # Code block: ```...```
+        if text.startswith("```", i):
+            end = text.find("```", i + 3)
+            if end != -1:
+                code_content = text[i + 3:end]
+                result.append(f"<pre>{html_escape(code_content)}</pre>")
+                i = end + 3
+                continue
+        
+        char = text[i]
+        
+        # Inline code: `...`
+        if char == "`":
+            end = text.find("`", i + 1)
+            if end != -1:
+                code_content = text[i + 1:end]
+                result.append(f"<code>{html_escape(code_content)}</code>")
+                i = end + 1
+                continue
+        
+        # Bold: *...*
+        if char == "*":
+            # Find matching * (not **)
+            end = text.find("*", i + 1)
+            if end != -1 and end > i + 1 and text[i + 1] != "*":
+                bold_content = text[i + 1:end]
+                result.append(f"<b>{html_escape(bold_content)}</b>")
+                i = end + 1
+                continue
+        
+        # Italic: _..._
+        if char == "_":
+            end = text.find("_", i + 1)
+            if end != -1 and end > i + 1:
+                italic_content = text[i + 1:end]
+                result.append(f"<i>{html_escape(italic_content)}</i>")
+                i = end + 1
+                continue
+        
+        # Escape special chars
+        if char == "&":
+            result.append("&amp;")
+        elif char == "<":
+            result.append("&lt;")
+        elif char == ">":
+            result.append("&gt;")
+        else:
+            result.append(char)
+        
+        i += 1
+    
+    return "".join(result)
+
+
+def html_escape(s: str) -> str:
+    """Escape HTML special characters."""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _is_addressed_to_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -324,9 +389,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (pt or 0) > 0 or (ct or 0) > 0:
             status_text = f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
         await _safe_edit_text(status_msg, status_text)
-        formatted = _telegram_markdown(answer)
+        formatted = _telegram_html(answer)
         try:
-            await msg.reply_text(formatted, parse_mode=ParseMode.MARKDOWN)
+            await msg.reply_text(formatted, parse_mode=ParseMode.HTML)
         except BadRequest:
             await msg.reply_text(answer)
         # Дополняем историю для следующих вопросов

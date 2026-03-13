@@ -1,8 +1,11 @@
 import requests
 import json
+import logging
 import config
 from .retriever import search_all_repos, search_in_repo
 from .qdrant_client import collection_exists
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = config.AGENT_SYSTEM_PROMPT
@@ -66,6 +69,7 @@ TOOLS = [
 
 
 def _execute_tool(name: str, args: dict, on_status=None) -> str:
+    logger.debug("Tool call: %s(%s)", name, args)
     if name == "list_indexed_repos":
         indexed = [r for r in config.REPOS_WHITELIST if collection_exists(r)]
         if not indexed:
@@ -143,6 +147,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
 
     for iteration in range(max_iterations):
         try:
+            logger.debug("LLM request iteration %d, messages=%d", iteration + 1, len(messages))
             response = requests.post(
                 f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
                 headers={
@@ -159,7 +164,12 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
                 },
                 timeout=config.RAG_AGENT_TIMEOUT,
             )
+        except requests.exceptions.Timeout as e:
+            logger.error("LLM timeout after %ds: %s", config.RAG_AGENT_TIMEOUT, e)
+            answer = f"Таймаут при запросе к LLM ({config.RAG_AGENT_TIMEOUT}с). Попробуй позже."
+            return answer, _make_session_data(tool_calls_log, iteration + 1, usage_total)
         except Exception as e:
+            logger.error("LLM network error: %s", e)
             answer = f"Ошибка сети: {e}"
             return answer, _make_session_data(tool_calls_log, iteration + 1, usage_total)
 
