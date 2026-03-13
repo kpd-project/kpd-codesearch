@@ -51,9 +51,11 @@ def get_collection_info(collection_name: str) -> dict:
     if not collection_exists(collection_name):
         return None
     info = client.get_collection(collection_name=collection_name)
+    # indexed_vectors_count может быть 0 при построении индекса — показываем points_count
+    vec = getattr(info, "indexed_vectors_count", None)
     return {
         "name": collection_name,
-        "vectors_count": getattr(info, "indexed_vectors_count", info.points_count),
+        "vectors_count": vec if (vec is not None and vec > 0) else info.points_count,
         "points_count": info.points_count,
     }
 
