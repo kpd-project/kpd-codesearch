@@ -75,7 +75,25 @@ User Message → Telegram Bot → RAG Pipeline → OpenRouter (LLM)
 | `/remove <repo>` | Удалить | handlers.py:remove_command |
 | `/reindex <repo>` | Переиндексировать | handlers.py:reindex_command |
 | `/status` | Статус коллекций | handlers.py:status_command |
+| `/mode` | Переключить режим (Two-Agent / Simple) | handlers.py:mode_command |
 | `<текст>` | Вопрос → RAG | handlers.py:handle_message |
+
+---
+
+## РЕЖИМЫ РАБОТЫ
+
+Бот поддерживает два режима обработки вопросов:
+
+| Режим | Описание |
+|-------|----------|
+| **Two-Agent** | Двухагентный пайплайн: Analyst планирует поиск → Answerer синтезирует ответ |
+| **Simple** | Одноагентный пайплайн: прямой RAG (generator.py) |
+
+### Переключение режима
+
+- **Команда `/mode`** — показывает inline-кнопки для выбора режима
+- **Дефолт при старте** — берётся из `config.USE_TWO_AGENT_PIPELINE` (`.env`)
+- **Хранение** — в `context.bot_data` (in-memory, сбрасывается при перезапуске бота)
 
 ---
 

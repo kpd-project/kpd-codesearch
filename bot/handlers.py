@@ -38,7 +38,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add <repo> - Добавить и проиндексировать репозиторий\n"
         "/remove <repo> - Удалить репозиторий\n"
         "/reindex <repo> - Переиндексировать репозиторий\n"
-        "/status - Статус всех коллекций\n\n"
+        "/status - Статус всех коллекций\n"
+        "/mode - Переключить режим работы (Two-Agent / Simple)\n\n"
         "Просто напиши вопрос — и я отвечу на основе кода!\n\n"
         "В группе: напиши @бот вопрос — бот ответит только при упоминании."
     )
@@ -224,15 +225,77 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(user.id if user else None):
         return
     text = "📊 Статус коллекций:\n\n"
-    
+
     for repo in config.REPOS_WHITELIST:
         if rag.collection_exists(repo):
             info = rag.get_collection_info(repo)
             text += f"✅ {repo}: {info['vectors_count']} векторов\n"
         else:
             text += f"❌ {repo}: не создана\n"
-    
+
     await update.message.reply_text(text)
+
+
+async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает inline-кнопки для переключения режима работы бота."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+
+    use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await update.message.reply_text(
+        f"🔄 Режим работы: {current_mode}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие кнопок переключения режима."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        await update.callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
+
+    query = update.callback_query
+    await query.answer()
+
+    mode = query.data.split(":", 1)[1]
+    use_two_agent = mode == "two_agent"
+    context.bot_data["use_two_agent"] = use_two_agent
+
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    # Обновляем кнопки с новым состоянием
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await query.edit_message_text(
+        f"✅ Переключено на {current_mode} режим",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 
 # Макс. сообщений в контексте диалога для RAG (user + assistant пары)
@@ -392,7 +455,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        if config.USE_TWO_AGENT_PIPELINE:
+        use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+        if use_two_agent:
             from rag.agent.pipeline import generate_answer_two_agent
             future = loop.run_in_executor(
                 None,
