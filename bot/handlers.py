@@ -38,7 +38,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add <repo> - Добавить и проиндексировать репозиторий\n"
         "/remove <repo> - Удалить репозиторий\n"
         "/reindex <repo> - Переиндексировать репозиторий\n"
-        "/status - Статус всех коллекций\n\n"
+        "/status - Статус всех коллекций\n"
+        "/mode - Переключить режим работы (Two-Agent / Simple)\n\n"
+        "<b>Администрирование:</b>\n"
+        "/adduser <id/@username> - Добавить пользователя\n"
+        "/removeuser <id/@username> - Удалить пользователя\n"
+        "/listusers - Список пользователей\n"
+        "/id - Узнать ID пользователя\n\n"
         "Просто напиши вопрос — и я отвечу на основе кода!\n\n"
         "В группе: напиши @бот вопрос — бот ответит только при упоминании."
     )
@@ -224,15 +230,180 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(user.id if user else None):
         return
     text = "📊 Статус коллекций:\n\n"
-    
+
     for repo in config.REPOS_WHITELIST:
         if rag.collection_exists(repo):
             info = rag.get_collection_info(repo)
             text += f"✅ {repo}: {info['vectors_count']} векторов\n"
         else:
             text += f"❌ {repo}: не создана\n"
-    
+
     await update.message.reply_text(text)
+
+
+async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает inline-кнопки для переключения режима работы бота."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+
+    use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await update.message.reply_text(
+        f"🔄 Режим работы: {current_mode}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ============ Whitelist Management Commands ============
+
+async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавляет пользователя в whitelist: /adduser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /adduser <user_id или @username>\n\n"
+            "Чтобы узнать user_id: перешлите любое сообщение от пользователя боту и используйте /id")
+        return
+
+    target = args[0]
+    
+    # Если передан username - пытаемся получить user_id через Telegram API
+    if target.startswith("@"):
+        # Попытка получить user_id по username (работает только если пользователь писал боту)
+        # Для упрощения - просто сохраняем как есть (Telegram username)
+        # В is_allowed нужно будет проверять и username
+        user_id = target[1:]  # Убираем @
+    else:
+        user_id = target
+
+    # Проверяем, что это число (или username)
+    if not user_id.isdigit() and not user_id.startswith("@"):
+        await update.message.reply_text("Укажите числовой user_id или username (с @)")
+        return
+
+    # Нормализуем - убираем @ для хранения
+    user_id_to_store = user_id.lstrip("@")
+    
+    added = config.add_whitelist_user(user_id_to_store)
+    if added:
+        await update.message.reply_text(f"✅ Пользователь {user_id} добавлен в whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {user_id} уже в whitelist.")
+
+
+async def removeuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет пользователя из whitelist: /removeuser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /removeuser <user_id или @username>")
+        return
+
+    target = args[0]
+    user_id_to_store = target.lstrip("@")
+    
+    removed = config.remove_whitelist_user(user_id_to_store)
+    if removed:
+        await update.message.reply_text(f"✅ Пользователь {target} удалён из whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {target} не найден в whitelist.")
+
+
+async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает список пользователей в whitelist."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    users = config.TELEGRAM_WHITELIST_USERS
+    if not users:
+        await update.message.reply_text("ℹ️ Whitelist пуст (доступ открыт всем).")
+        return
+    
+    text = "📋 Пользователи в whitelist:\n\n" + "\n".join(f"• {u}" for u in sorted(users))
+    await update.message.reply_text(text)
+
+
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию о пользователе: /id (в ответ на сообщение или в группе)."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    msg = update.effective_message
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target = msg.reply_to_message.from_user
+    else:
+        target = user
+    
+    text = f"👤 Информация о пользователе:\n\n"
+    text += f"ID: <code>{target.id}</code>\n"
+    if target.username:
+        text += f"Username: @{target.username}\n"
+    if target.first_name:
+        text += f"Имя: {target.first_name}\n"
+    if target.last_name:
+        text += f"Фамилия: {target.last_name}\n"
+    
+    in_whitelist = str(target.id) in config.TELEGRAM_WHITELIST_USERS
+    text += f"\nВ whitelist: {'✅ Да' if in_whitelist else '❌ Нет'}"
+    
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
+async def mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие кнопок переключения режима."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        await update.callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
+
+    query = update.callback_query
+    await query.answer()
+
+    mode = query.data.split(":", 1)[1]
+    use_two_agent = mode == "two_agent"
+    context.bot_data["use_two_agent"] = use_two_agent
+
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    # Обновляем кнопки с новым состоянием
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await query.edit_message_text(
+        f"✅ Переключено на {current_mode} режим",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 
 # Макс. сообщений в контексте диалога для RAG (user + assistant пары)
@@ -392,10 +563,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        future = loop.run_in_executor(
-            None,
-            lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
-        )
+        use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+        if use_two_agent:
+            from rag.agent.pipeline import generate_answer_two_agent
+            future = loop.run_in_executor(
+                None,
+                lambda: generate_answer_two_agent(question, history=history, on_status=on_qdrant_status),
+            )
+        else:
+            future = loop.run_in_executor(
+                None,
+                lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
+            )
         while not future.done():
             try:
                 line = status_queue.get_nowait()

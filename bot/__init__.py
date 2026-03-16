@@ -6,8 +6,14 @@ from .handlers import (
     reindex_command,
     reindex_callback,
     status_command,
+    mode_command,
+    mode_callback,
     handle_message,
     error_handler,
+    adduser_command,
+    removeuser_command,
+    listusers_command,
+    id_command,
 )
 
 __all__ = [
@@ -18,6 +24,12 @@ __all__ = [
     "reindex_command",
     "reindex_callback",
     "status_command",
+    "mode_command",
+    "mode_callback",
     "handle_message",
     "error_handler",
+    "adduser_command",
+    "removeuser_command",
+    "listusers_command",
+    "id_command",
 ]

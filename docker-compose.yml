@@ -1,0 +1,13 @@
+# LCPRO — автозапуск Telegram RAG-бота
+services:
+  lcpro:
+    build: .
+    image: lcpro-bot:latest
+    container_name: lcpro
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REPOS_BASE_PATH: /repos
+    volumes:
+      # Монтируем репозитории KPD (путь с хоста → в контейнере)
+      - ${REPOS_BASE_PATH:-d:/kpd-project}:/repos:ro

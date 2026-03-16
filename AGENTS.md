@@ -75,7 +75,25 @@ User Message → Telegram Bot → RAG Pipeline → OpenRouter (LLM)
 | `/remove <repo>` | Удалить | handlers.py:remove_command |
 | `/reindex <repo>` | Переиндексировать | handlers.py:reindex_command |
 | `/status` | Статус коллекций | handlers.py:status_command |
+| `/mode` | Переключить режим (Two-Agent / Simple) | handlers.py:mode_command |
 | `<текст>` | Вопрос → RAG | handlers.py:handle_message |
+
+---
+
+## РЕЖИМЫ РАБОТЫ
+
+Бот поддерживает два режима обработки вопросов:
+
+| Режим | Описание |
+|-------|----------|
+| **Two-Agent** | Двухагентный пайплайн: Analyst планирует поиск → Answerer синтезирует ответ |
+| **Simple** | Одноагентный пайплайн: прямой RAG (generator.py) |
+
+### Переключение режима
+
+- **Команда `/mode`** — показывает inline-кнопки для выбора режима
+- **Дефолт при старте** — берётся из `config.USE_TWO_AGENT_PIPELINE` (`.env`)
+- **Хранение** — в `context.bot_data` (in-memory, сбрасывается при перезапуске бота)
 
 ---
 
@@ -131,6 +149,14 @@ REPOS_WHITELIST=kpd-backend,kpd-frontend,kpd-se,kpd-landing,kpd-pdf-2
 pip install -r requirements.txt
 python main.py
 ```
+
+### Docker (сборка + автозапуск)
+```bash
+docker compose up -d --build
+```
+- `.env` подхватывается из корня проекта
+- Репозитории монтируются из `REPOS_BASE_PATH` (из .env) в `/repos`
+- `restart: unless-stopped` — автоперезапуск при падении
 
 ### При изменении кода
 1. Изменения в .env → перезапуск бота
