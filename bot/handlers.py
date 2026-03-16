@@ -40,6 +40,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/reindex <repo> - Переиндексировать репозиторий\n"
         "/status - Статус всех коллекций\n"
         "/mode - Переключить режим работы (Two-Agent / Simple)\n\n"
+        "<b>Администрирование:</b>\n"
+        "/adduser <id/@username> - Добавить пользователя\n"
+        "/removeuser <id/@username> - Удалить пользователя\n"
+        "/listusers - Список пользователей\n"
+        "/id - Узнать ID пользователя\n\n"
         "Просто напиши вопрос — и я отвечу на основе кода!\n\n"
         "В группе: напиши @бот вопрос — бот ответит только при упоминании."
     )
@@ -261,6 +266,109 @@ async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 Режим работы: {current_mode}",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
+# ============ Whitelist Management Commands ============
+
+async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавляет пользователя в whitelist: /adduser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /adduser <user_id или @username>\n\n"
+            "Чтобы узнать user_id: перешлите любое сообщение от пользователя боту и используйте /id")
+        return
+
+    target = args[0]
+    
+    # Если передан username - пытаемся получить user_id через Telegram API
+    if target.startswith("@"):
+        # Попытка получить user_id по username (работает только если пользователь писал боту)
+        # Для упрощения - просто сохраняем как есть (Telegram username)
+        # В is_allowed нужно будет проверять и username
+        user_id = target[1:]  # Убираем @
+    else:
+        user_id = target
+
+    # Проверяем, что это число (или username)
+    if not user_id.isdigit() and not user_id.startswith("@"):
+        await update.message.reply_text("Укажите числовой user_id или username (с @)")
+        return
+
+    # Нормализуем - убираем @ для хранения
+    user_id_to_store = user_id.lstrip("@")
+    
+    added = config.add_whitelist_user(user_id_to_store)
+    if added:
+        await update.message.reply_text(f"✅ Пользователь {user_id} добавлен в whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {user_id} уже в whitelist.")
+
+
+async def removeuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет пользователя из whitelist: /removeuser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /removeuser <user_id или @username>")
+        return
+
+    target = args[0]
+    user_id_to_store = target.lstrip("@")
+    
+    removed = config.remove_whitelist_user(user_id_to_store)
+    if removed:
+        await update.message.reply_text(f"✅ Пользователь {target} удалён из whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {target} не найден в whitelist.")
+
+
+async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает список пользователей в whitelist."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    users = config.TELEGRAM_WHITELIST_USERS
+    if not users:
+        await update.message.reply_text("ℹ️ Whitelist пуст (доступ открыт всем).")
+        return
+    
+    text = "📋 Пользователи в whitelist:\n\n" + "\n".join(f"• {u}" for u in sorted(users))
+    await update.message.reply_text(text)
+
+
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию о пользователе: /id (в ответ на сообщение или в группе)."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    msg = update.effective_message
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target = msg.reply_to_message.from_user
+    else:
+        target = user
+    
+    text = f"👤 Информация о пользователе:\n\n"
+    text += f"ID: <code>{target.id}</code>\n"
+    if target.username:
+        text += f"Username: @{target.username}\n"
+    if target.first_name:
+        text += f"Имя: {target.first_name}\n"
+    if target.last_name:
+        text += f"Фамилия: {target.last_name}\n"
+    
+    in_whitelist = str(target.id) in config.TELEGRAM_WHITELIST_USERS
+    text += f"\nВ whitelist: {'✅ Да' if in_whitelist else '❌ Нет'}"
+    
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

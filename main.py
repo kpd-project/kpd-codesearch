@@ -15,6 +15,10 @@ from bot import (
     mode_callback,
     handle_message,
     error_handler,
+    adduser_command,
+    removeuser_command,
+    listusers_command,
+    id_command,
 )
 
 logging.basicConfig(
@@ -44,6 +48,10 @@ def main():
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("mode", mode_command))
     app.add_handler(CallbackQueryHandler(mode_callback, pattern=r"^mode:"))
+    app.add_handler(CommandHandler("adduser", adduser_command))
+    app.add_handler(CommandHandler("removeuser", removeuser_command))
+    app.add_handler(CommandHandler("listusers", listusers_command))
+    app.add_handler(CommandHandler("id", id_command))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     

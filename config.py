@@ -1,13 +1,61 @@
 import os
+import json
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_WHITELIST_USERS = set(
-    u.strip() for u in os.getenv("TELEGRAM_WHITELIST_USERS", "").split(",") if u.strip()
-)
+
+# Whitelist users - поддержка JSON файла + .env fallback
+_WHITELIST_FILE = Path(__file__).parent / "whitelist.json"
+
+def _load_whitelist() -> set:
+    """Загружает whitelist из JSON файла, fallback - .env."""
+    if _WHITELIST_FILE.exists():
+        try:
+            data = json.loads(_WHITELIST_FILE.read_text(encoding="utf-8"))
+            users = set(str(u) for u in data.get("users", []))
+            if users:
+                logger.info(f"Loaded {len(users)} users from whitelist.json")
+                return users
+        except Exception as e:
+            logger.warning(f"Failed to load whitelist.json: {e}")
+    
+    # Fallback to .env
+    return set(u.strip() for u in os.getenv("TELEGRAM_WHITELIST_USERS", "").split(",") if u.strip())
+
+def _save_whitelist(users: set) -> None:
+    """Сохраняет whitelist в JSON файл."""
+    try:
+        data = {"users": sorted(list(users))}
+        _WHITELIST_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"Saved {len(users)} users to whitelist.json")
+    except Exception as e:
+        logger.error(f"Failed to save whitelist.json: {e}")
+        raise
+
+TELEGRAM_WHITELIST_USERS = _load_whitelist()
+
+# Helpers for runtime whitelist management
+def add_whitelist_user(user_id: str) -> bool:
+    """Добавляет пользователя в whitelist. Returns True if added."""
+    if user_id in TELEGRAM_WHITELIST_USERS:
+        return False
+    TELEGRAM_WHITELIST_USERS.add(user_id)
+    _save_whitelist(TELEGRAM_WHITELIST_USERS)
+    return True
+
+def remove_whitelist_user(user_id: str) -> bool:
+    """Удаляет пользователя из whitelist. Returns True if removed."""
+    if user_id not in TELEGRAM_WHITELIST_USERS:
+        return False
+    TELEGRAM_WHITELIST_USERS.discard(user_id)
+    _save_whitelist(TELEGRAM_WHITELIST_USERS)
+    return True
 
 OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")

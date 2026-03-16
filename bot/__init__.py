@@ -10,6 +10,10 @@ from .handlers import (
     mode_callback,
     handle_message,
     error_handler,
+    adduser_command,
+    removeuser_command,
+    listusers_command,
+    id_command,
 )
 
 __all__ = [
@@ -24,4 +28,8 @@ __all__ = [
     "mode_callback",
     "handle_message",
     "error_handler",
+    "adduser_command",
+    "removeuser_command",
+    "listusers_command",
+    "id_command",
 ]
