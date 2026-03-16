@@ -1,0 +1,41 @@
+# Secrets & env (передаётся через env_file в compose)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+.Python
+.venv
+venv
+env
+
+# Build & IDE
+dist
+build
+*.egg-info
+.vscode
+.idea
+*.iml
+
+# Tests & tools
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Logs (создаётся при запуске)
+logs/*.json
+logs/*.log
+
+# Index state (пересоздаётся)
+.index_state
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db

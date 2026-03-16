@@ -150,6 +150,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### Docker (сборка + автозапуск)
+```bash
+docker compose up -d --build
+```
+- `.env` подхватывается из корня проекта
+- Репозитории монтируются из `REPOS_BASE_PATH` (из .env) в `/repos`
+- `restart: unless-stopped` — автоперезапуск при падении
+
 ### При изменении кода
 1. Изменения в .env → перезапуск бота
 2. Новый репозиторий → добавить в REPOS_WHITELIST
