@@ -73,12 +73,28 @@ class AnswererAgent:
         content = data["choices"][0]["message"].get("content", "")
         usage = data.get("usage", {})
         
-        try:
-            parsed = json.loads(content)
-            answerer_response = AnswererResponse(**parsed)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Failed to parse Answerer response: {e}\nContent: {content}")
-            if len(content) > 50 and not content.startswith("{"):
+        def _try_parse(raw: str) -> AnswererResponse | None:
+            for candidate in [raw.strip(), raw]:
+                try:
+                    parsed = json.loads(candidate)
+                    return AnswererResponse(**parsed)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Извлечь JSON-объект из текста вида "json\n{...}" или markdown-блока
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            if start >= 0 and end > start:
+                try:
+                    parsed = json.loads(raw[start:end])
+                    return AnswererResponse(**parsed)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            return None
+
+        answerer_response = _try_parse(content)
+        if answerer_response is None:
+            logger.error(f"Failed to parse Answerer response\nContent: {content[:200]}...")
+            if len(content) > 50 and "{" not in content:
                 answerer_response = AnswererResponse(answer=content, need_more=False)
             else:
                 answerer_response = AnswererResponse(
