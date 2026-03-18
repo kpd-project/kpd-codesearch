@@ -15,6 +15,7 @@ interface Repo {
   chunks: number;
   last_indexed: string | null;
   status: string;
+  description?: string | null;
 }
 
 interface Settings {
@@ -60,31 +61,63 @@ export function useWebSocket() {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/state`;
-    const socket = new WebSocket(wsUrl);
 
-    socket.onopen = () => {
-      setConnected(true);
-      console.log("WebSocket connected");
+    let socket: WebSocket | null = null;
+    let cancelled = false;
+    let retry = 0;
+    let reconnectTimeoutId: number | undefined;
+
+    const connect = () => {
+      if (cancelled) return;
+
+      socket = new WebSocket(wsUrl);
+      setWs(socket);
+
+      socket.onopen = () => {
+        setConnected(true);
+        retry = 0;
+        console.log("WebSocket connected");
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setMessages((prev) => [...prev.slice(-50), data]);
+        } catch {
+          console.error("Failed to parse WebSocket message");
+        }
+      };
+
+      socket.onerror = (e) => {
+        // В некоторых браузерах причину можно увидеть только в консоли,
+        // поэтому пишем хоть что-то.
+        console.error("WebSocket error", e);
+      };
+
+      socket.onclose = () => {
+        setConnected(false);
+        if (cancelled) return;
+
+        // Экспоненциальная задержка до максимума — чтобы не спамить сервер.
+        const baseDelay = 300;
+        const delay =
+          Math.min(5000, baseDelay * Math.pow(2, retry)) + Math.random() * 200;
+        retry += 1;
+
+        reconnectTimeoutId = window.setTimeout(connect, delay);
+      };
     };
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setMessages((prev) => [...prev.slice(-50), data]);
-      } catch {
-        console.error("Failed to parse WebSocket message");
-      }
-    };
-
-    socket.onclose = () => {
-      setConnected(false);
-      console.log("WebSocket disconnected");
-    };
-
-    setWs(socket);
+    connect();
 
     return () => {
-      socket.close();
+      cancelled = true;
+      if (reconnectTimeoutId) window.clearTimeout(reconnectTimeoutId);
+      try {
+        socket?.close();
+      } catch {
+        // noop
+      }
     };
   }, []);
 

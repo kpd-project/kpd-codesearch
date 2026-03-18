@@ -62,22 +62,22 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
   };
 
   if (loading) {
-    return <div className="p-4">Loading...</div>;
+    return <div className="p-4">Загрузка…</div>;
   }
 
   return (
     <div className={className}>
-      <Card className="bg-slate-800 border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-slate-100 flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2">
             <SettingsIcon className="w-5 h-5" />
-            Runtime Settings
+            Настройки выполнения
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Model */}
           <div>
-            <Label htmlFor="model">LLM Model</Label>
+            <Label htmlFor="model">Модель LLM</Label>
             <Select
               value={settings.model}
               onValueChange={(value) => {
@@ -102,7 +102,7 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
           {/* Temperature */}
           <div>
             <div className="flex justify-between">
-              <Label>Temperature</Label>
+              <Label>Температура</Label>
               <Badge variant="secondary">{settings.temperature.toFixed(2)}</Badge>
             </div>
             <Slider
@@ -116,15 +116,15 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
                 setSettings((s) => ({ ...s, temperature: values[0] || 0 }));
               }}
             />
-            <p className="text-xs text-slate-500 mt-1">
-              Lower = more focused, Higher = more creative
+            <p className="text-xs text-muted-foreground mt-1">
+              Ниже — точнее, выше — креативнее
             </p>
           </div>
 
           {/* Top-K */}
           <div>
             <div className="flex justify-between">
-              <Label>Top-K (search results)</Label>
+              <Label>Top-K (результаты поиска)</Label>
               <Badge variant="secondary">{settings.top_k}</Badge>
             </div>
             <Slider
@@ -141,7 +141,7 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
 
           {/* Max Chunks */}
           <div>
-            <Label htmlFor="max-chunks">Max Chunks for Context</Label>
+            <Label htmlFor="max-chunks">Макс. чанков в контексте</Label>
             <Input
               id="max-chunks"
               type="number"
@@ -160,7 +160,7 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
 
           <Button onClick={handleSave} disabled={saving} className="w-full">
             <Save className="w-4 h-4 mr-2" />
-            {saving ? "Saving..." : "Save Settings"}
+            {saving ? "Сохранение…" : "Сохранить настройки"}
           </Button>
         </CardContent>
       </Card>

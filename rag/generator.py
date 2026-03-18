@@ -1,6 +1,7 @@
-import requests
 import json
 import logging
+import requests
+import httpx
 import config
 from .retriever import search_all_repos, search_in_repo
 from .qdrant_client import collection_exists
@@ -240,6 +241,58 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
     except Exception as e:
         answer = f"Ошибка финального ответа: {e}"
         return answer, _make_session_data(tool_calls_log, max_iterations, usage_total)
+
+
+RAG_CONTEXT_SYSTEM = (
+    "Ты помощник по коду KPD-проекта. Отвечай кратко, опираясь только на предоставленный контекст."
+)
+
+
+async def generate_response(
+    query: str,
+    context_chunks: list[dict],
+    model: str | None = None,
+    temperature: float = 0.1,
+):
+    """Стриминг ответа LLM по контексту (для Web API)."""
+    model = model or config.OPENROUTER_MODEL
+    context = "\n\n---\n\n".join(
+        f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
+        for c in context_chunks
+    )
+    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        async with client.stream(
+            "POST",
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": RAG_CONTEXT_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": True,
+                "temperature": temperature,
+                "max_tokens": 4000,
+            },
+        ) as resp:
+            if resp.status_code != 200:
+                raise RuntimeError(f"OpenRouter error {resp.status_code}: {await resp.aread()}")
+            async for line in resp.aiter_lines():
+                if line.startswith("data: ") and line != "data: [DONE]":
+                    try:
+                        data = json.loads(line[6:])
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        pass
 
 
 def _make_session_data(tool_calls_log: list[dict], iterations: int, usage: dict | None = None) -> dict:

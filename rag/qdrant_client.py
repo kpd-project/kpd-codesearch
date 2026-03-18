@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
+import httpx
 import config
 
 _client = None
@@ -62,3 +63,36 @@ def get_collection_info(collection_name: str) -> dict:
 def list_collections() -> list[str]:
     client = get_client()
     return [c.name for c in client.get_collections().collections]
+
+
+def _rest_base() -> str:
+    return config.QDRANT_URL.rstrip("/")
+
+
+def _rest_headers() -> dict:
+    h = {"Content-Type": "application/json"}
+    if config.QDRANT_API_KEY:
+        h["api-key"] = config.QDRANT_API_KEY
+    return h
+
+
+def get_collection_properties(collection_name: str) -> dict:
+    """Читает произвольные метаданные коллекции (path, description, last_indexed, enabled)."""
+    url = f"{_rest_base()}/collections/{collection_name}/properties"
+    try:
+        resp = httpx.get(url, headers=_rest_headers(), verify=False, timeout=10)
+        if resp.status_code == 200:
+            return resp.json().get("result", {})
+    except Exception:
+        pass
+    return {}
+
+
+def set_collection_properties(collection_name: str, props: dict) -> bool:
+    """Обновляет (patch) метаданные коллекции. Требует существующей коллекции."""
+    url = f"{_rest_base()}/collections/{collection_name}/properties"
+    try:
+        resp = httpx.patch(url, headers=_rest_headers(), json=props, verify=False, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False

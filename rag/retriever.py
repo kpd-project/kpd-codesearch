@@ -1,7 +1,8 @@
+import asyncio
 from qdrant_client import QdrantClient
 import config
 from .embeddings import get_embeddings
-from .qdrant_client import get_client, collection_exists
+from .qdrant_client import get_client, collection_exists, get_collection_properties
 
 
 def search_in_repo(repo_name: str, query: str, top_k: int = 5, min_score: float | None = None) -> list[dict]:
@@ -35,11 +36,28 @@ def search_all_repos(query: str, top_k: int = 3, min_score: float | None = None)
     all_results = []
     
     for repo_name in config.REPOS_WHITELIST:
-        if collection_exists(repo_name):
-            results = search_in_repo(repo_name, query, top_k, min_score)
-            for r in results:
-                r["repo"] = repo_name
-            all_results.extend(results)
+        if not collection_exists(repo_name):
+            continue
+        if not get_collection_properties(repo_name).get("enabled", True):
+            continue
+        results = search_in_repo(repo_name, query, top_k, min_score)
+        for r in results:
+            r["repo"] = repo_name
+        all_results.extend(results)
     
     all_results.sort(key=lambda x: x["score"], reverse=True)
     return all_results[:config.RAG_SEARCH_ALL_LIMIT]
+
+
+async def search_code(
+    query: str,
+    repo_filter: str | None = None,
+    top_k: int = 5,
+) -> list[dict]:
+    """Async поиск для Web API. repo_filter=None — по всем репо."""
+    if repo_filter:
+        results = await asyncio.to_thread(search_in_repo, repo_filter, query, top_k)
+        for r in results:
+            r["repo"] = repo_filter
+        return results
+    return await asyncio.to_thread(search_all_repos, query, top_k)
