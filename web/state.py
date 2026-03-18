@@ -1,23 +1,19 @@
-"""In-memory state management for web UI."""
-from dataclasses import dataclass, field
+"""Global application state. Persistent repo metadata lives in Qdrant collection properties."""
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 import logging
-from qdrant_client import QdrantClient
+
 import config
+from qdrant_client import QdrantClient
+from rag.qdrant_client import (
+    get_client as get_qdrant_client,
+    collection_exists,
+    create_collection,
+    get_collection_properties,
+    set_collection_properties,
+)
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Repository:
-    """Repository state."""
-    name: str
-    path: str
-    enabled: bool = True
-    chunks: int = 0
-    last_indexed: str | None = None
-    status: str = "idle"  # idle, indexing, error
 
 
 @dataclass
@@ -30,30 +26,31 @@ class RuntimeSettings:
 
 
 class State:
-    """Global application state."""
+    """Global application state.
+
+    Persistent per-repo данные (path, enabled, description, last_indexed) хранятся
+    в Qdrant Collection Properties через REST API.
+    Эфемерное (статус индексации) — в памяти.
+    """
 
     def __init__(self):
-        self.repos: dict[str, Repository] = {}
         self.settings = RuntimeSettings()
         self.qdrant_status: str = "disconnected"
         self.qdrant_client: QdrantClient | None = None
         self.start_time = datetime.now()
         self.indexing_progress: dict[str, int] = {}
+        # ephemeral: "idle" | "indexing" | "error" — только для текущей сессии
+        self._repo_status: dict[str, str] = {}
 
     def get_qdrant(self) -> QdrantClient:
-        """Get or create Qdrant client."""
         if self.qdrant_client is None:
-            self.qdrant_client = QdrantClient(
-                url=config.QDRANT_URL,
-                api_key=config.QDRANT_API_KEY,
-            )
+            # Единый фабричный клиент из rag/ — обход SSL-бага на Windows
+            self.qdrant_client = get_qdrant_client()
         return self.qdrant_client
 
     def check_qdrant(self) -> bool:
-        """Check Qdrant connection."""
         try:
-            client = self.get_qdrant()
-            client.get_collections()
+            self.get_qdrant().get_collections()
             self.qdrant_status = "connected"
             return True
         except Exception as e:
@@ -61,80 +58,99 @@ class State:
             self.qdrant_status = "error"
             return False
 
-    def load_repos_from_qdrant(self):
-        """Load repositories from Qdrant collections."""
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _build_repo(self, name: str, props: dict, chunks: int) -> dict:
+        """Собирает dict репозитория из Qdrant-properties + эфемерного статуса."""
+        return {
+            "name": name,
+            "path": props.get("path") or str(config.REPOS_BASE_PATH / name),
+            "enabled": props.get("enabled", True),
+            "chunks": chunks,
+            "last_indexed": props.get("last_indexed"),
+            "status": self._repo_status.get(name, "idle"),
+            "description": props.get("description"),
+        }
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def list_repos(self) -> list[dict]:
+        """Все репозитории: коллекции Qdrant + вайтлист без коллекции."""
         try:
             client = self.get_qdrant()
             collections = client.get_collections().collections
-            
-            # Clear and rebuild
-            self.repos.clear()
-            
+            result: dict[str, dict] = {}
+
             for col in collections:
                 name = col.name
-                # Try to get collection info for chunk count
                 try:
                     info = client.get_collection(name)
-                    chunks = info.points_count
-                except:
+                    chunks = info.points_count or 0
+                except Exception:
                     chunks = 0
-                
-                self.repos[name] = Repository(
-                    name=name,
-                    path="",  # Path not stored in Qdrant
-                    enabled=True,
-                    chunks=chunks,
-                )
-            
-            # Add whitelisted repos that don't exist yet
+                result[name] = self._build_repo(name, get_collection_properties(name), chunks)
+
+            # Вайтлист-репо, которых ещё нет в Qdrant
             for repo_name in config.REPOS_WHITELIST:
-                if repo_name not in self.repos:
-                    self.repos[repo_name] = Repository(
-                        name=repo_name,
-                        path=str(config.REPOS_BASE_PATH / repo_name),
-                        enabled=True,
-                        chunks=0,
-                    )
-                    
+                if repo_name not in result:
+                    result[repo_name] = self._build_repo(repo_name, {}, 0)
+
+            return list(result.values())
         except Exception as e:
-            logger.error(f"Failed to load repos from Qdrant: {e}")
+            logger.error(f"Failed to list repos: {e}")
+            return []
 
-    def get_repo(self, name: str) -> Repository | None:
-        """Get repository by name."""
-        return self.repos.get(name)
+    def get_repo(self, name: str) -> dict | None:
+        """Один репо из Qdrant или None если не существует и не в вайтлисте."""
+        in_qdrant = collection_exists(name)
+        if not in_qdrant and name not in config.REPOS_WHITELIST:
+            return None
+        chunks = 0
+        props: dict = {}
+        if in_qdrant:
+            try:
+                info = self.get_qdrant().get_collection(name)
+                chunks = info.points_count or 0
+            except Exception:
+                pass
+            props = get_collection_properties(name)
+        return self._build_repo(name, props, chunks)
 
-    def add_repo(self, name: str, path: str) -> Repository:
-        """Add new repository."""
-        repo = Repository(name=name, path=path, enabled=True)
-        self.repos[name] = repo
-        return repo
+    def repo_exists(self, name: str) -> bool:
+        """Репо известен: есть коллекция в Qdrant или в вайтлисте."""
+        return collection_exists(name) or name in config.REPOS_WHITELIST
+
+    def add_repo(self, name: str, path: str) -> dict:
+        """Регистрирует репо: создаёт пустую коллекцию и сохраняет path в properties."""
+        create_collection(name)  # no-op если уже есть
+        set_collection_properties(name, {"path": path, "enabled": True})
+        return self._build_repo(name, {"path": path, "enabled": True}, 0)
 
     def remove_repo(self, name: str) -> bool:
-        """Remove repository."""
-        if name in self.repos:
-            del self.repos[name]
-            return True
-        return False
+        """Очищает эфемерный статус. Коллекцию удаляет вызывающий код."""
+        self._repo_status.pop(name, None)
+        self.indexing_progress.pop(name, None)
+        return True
+
+    def set_status(self, name: str, status: str):
+        self._repo_status[name] = status
 
     def update_indexing_progress(self, repo: str, progress: int):
-        """Update indexing progress."""
         self.indexing_progress[repo] = progress
-        if repo in self.repos:
-            self.repos[repo].status = "indexing"
+        self._repo_status[repo] = "indexing"
 
     def complete_indexing(self, repo: str, chunks: int):
-        """Mark indexing as complete."""
         self.indexing_progress.pop(repo, None)
-        if repo in self.repos:
-            self.repos[repo].chunks = chunks
-            self.repos[repo].status = "idle"
-            self.repos[repo].last_indexed = datetime.now().isoformat()
+        self._repo_status.pop(repo, None)
+        set_collection_properties(repo, {"last_indexed": datetime.now().isoformat()})
 
     def error_indexing(self, repo: str):
-        """Mark indexing as error."""
         self.indexing_progress.pop(repo, None)
-        if repo in self.repos:
-            self.repos[repo].status = "error"
+        self._repo_status[repo] = "error"
 
 
 # Global state instance

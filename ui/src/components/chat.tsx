@@ -20,10 +20,21 @@ export function Chat({ className }: ChatProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastAutoScrollAtRef = useRef<number>(0);
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const now = Date.now();
+
+    // Во время стриминга `messages` меняются на каждом чанкe ответа.
+    // Если прокручивать "smooth" на каждое обновление, скролл начинает дергаться.
+    if (isStreaming && now - lastAutoScrollAtRef.current < 200) return;
+    lastAutoScrollAtRef.current = now;
+
+    scrollRef.current?.scrollIntoView({
+      block: "end",
+      behavior: isStreaming ? "auto" : "smooth",
+    });
+  }, [messages, isStreaming]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +99,7 @@ export function Chat({ className }: ChatProps) {
       console.error("Query error:", error);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Error: Failed to get response" },
+        { role: "assistant", content: "Ошибка: не удалось получить ответ" },
       ]);
     } finally {
       setIsStreaming(false);
@@ -106,13 +117,13 @@ export function Chat({ className }: ChatProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4 min-h-0">
         <div className="space-y-4">
           {messages.length === 0 && (
-            <div className="text-center text-slate-500 mt-20">
-              <p>Ask me anything about your code!</p>
+            <div className="text-center text-muted-foreground mt-20">
+              <p>Спросите что угодно о вашем коде!</p>
               <p className="text-sm mt-2">
-                Example: "How does authentication work?"
+                Например: «Как работает аутентификация?»
               </p>
             </div>
           )}
@@ -123,12 +134,12 @@ export function Chat({ className }: ChatProps) {
               className={cn(
                 "rounded-lg p-4",
                 msg.role === "user"
-                  ? "bg-blue-600 text-white ml-12"
-                  : "bg-slate-800 text-slate-100 mr-12"
+                  ? "bg-primary text-primary-foreground ml-12"
+                  : "bg-muted text-foreground mr-12"
               )}
             >
               <div className="font-semibold text-xs mb-1 opacity-70">
-                {msg.role === "user" ? "You" : "Assistant"}
+                {msg.role === "user" ? "Вы" : "Ассистент"}
               </div>
               <div className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert">
                 {msg.content}
@@ -137,7 +148,7 @@ export function Chat({ className }: ChatProps) {
           ))}
           
           {isStreaming && (
-            <div className="bg-slate-800 text-slate-100 rounded-lg p-4 mr-12">
+            <div className="bg-muted text-foreground rounded-lg p-4 mr-12">
               <Loader2 className="w-4 h-4 animate-spin" />
             </div>
           )}
@@ -146,14 +157,14 @@ export function Chat({ className }: ChatProps) {
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-slate-800">
+      <div className="p-4 border-t border-border">
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your code..."
+            placeholder="Спросите о вашем коде…"
             disabled={isStreaming}
             className="flex-1"
           />
@@ -168,8 +179,8 @@ export function Chat({ className }: ChatProps) {
             <Trash2 className="w-4 h-4" />
           </Button>
         </form>
-        <p className="text-xs text-slate-500 mt-2">
-          Press Enter to send, Shift+Enter for newline
+        <p className="text-xs text-muted-foreground mt-2">
+          Enter — отправить, Shift+Enter — новая строка
         </p>
       </div>
     </div>

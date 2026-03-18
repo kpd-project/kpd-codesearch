@@ -111,15 +111,16 @@ async def index_repo_async(
     verbose: bool = True,
     resume: bool = False,
     on_progress: Optional[Callable] = None,
+    repo_path_override: Optional[Path] = None,
 ) -> dict:
     t0 = time.perf_counter()
     log = lambda s: print(s) if verbose else None
 
-    repo_path = config.REPOS_BASE_PATH / repo_name
+    repo_path = Path(repo_path_override) if repo_path_override else (config.REPOS_BASE_PATH / repo_name)
     if not repo_path.exists():
         return {"error": f"Repository not found: {repo_name}"}
 
-    if repo_name not in config.REPOS_WHITELIST:
+    if not repo_path_override and repo_name not in config.REPOS_WHITELIST:
         return {"error": f"Repository not in whitelist: {repo_name}"}
 
     log(f"\n[reindex] {repo_name}")
@@ -205,3 +206,22 @@ def index_repo(
     on_progress: Optional[Callable] = None,
 ) -> dict:
     return asyncio.run(index_repo_async(repo_name, verbose, resume, on_progress))
+
+
+async def index_repository(
+    repo_path: str | Path,
+    collection_name: str,
+    progress_callback: Optional[Callable] = None,
+) -> int:
+    """Индексация по явному пути и имени коллекции (для Web API)."""
+    path = Path(repo_path) if repo_path and str(repo_path).strip() else (config.REPOS_BASE_PATH / collection_name)
+    result = await index_repo_async(
+        repo_name=collection_name,
+        verbose=False,
+        resume=False,
+        on_progress=progress_callback,
+        repo_path_override=path,
+    )
+    if "error" in result:
+        raise ValueError(result["error"])
+    return result.get("chunks", 0)

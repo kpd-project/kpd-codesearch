@@ -4,13 +4,33 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
-from datetime import datetime
+import httpx
+from pathlib import Path
+from datetime import datetime, timedelta
 
+import config
+
+
+def _format_uptime(delta: timedelta) -> str:
+    """Формат: X д Y ч Z мин."""
+    total_sec = int(delta.total_seconds())
+    days = total_sec // 86400
+    rem = total_sec % 86400
+    hours = rem // 3600
+    minutes = (rem % 3600) // 60
+    parts = []
+    if days:
+        parts.append(f"{days} д")
+    if hours or days:
+        parts.append(f"{hours} ч")
+    parts.append(f"{minutes} мин")
+    return " ".join(parts)
 from web.state import state
 from web.websocket import ws_manager
 from rag.indexer import index_repository
 from rag.retriever import search_code
 from rag.generator import generate_response
+from rag.qdrant_client import set_collection_properties
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +53,11 @@ class RuntimeSettingsUpdate(BaseModel):
     max_chunks: Optional[int] = None
 
 
+class RepoEnabledUpdate(BaseModel):
+    """Toggle repo enabled state."""
+    enabled: bool
+
+
 class QueryRequest(BaseModel):
     """RAG query request."""
     message: str
@@ -52,16 +77,7 @@ async def get_status():
     """Get system status."""
     qdrant_ok = state.check_qdrant()
     
-    repos_data = []
-    for repo in state.repos.values():
-        repos_data.append({
-            "name": repo.name,
-            "path": repo.path,
-            "enabled": repo.enabled,
-            "chunks": repo.chunks,
-            "last_indexed": repo.last_indexed,
-            "status": repo.status,
-        })
+    repos_data = state.list_repos()
     
     return {
         "qdrant": {
@@ -76,87 +92,86 @@ async def get_status():
             "max_chunks": state.settings.max_chunks,
         },
         "indexing_progress": state.indexing_progress,
-        "uptime": str(datetime.now() - state.start_time),
+        "uptime": _format_uptime(datetime.now() - state.start_time),
     }
 
 
 @router.get("/api/repos")
 async def list_repos():
     """List all repositories."""
-    return {
-        "repos": [
-            {
-                "name": r.name,
-                "path": r.path,
-                "enabled": r.enabled,
-                "chunks": r.chunks,
-                "last_indexed": r.last_indexed,
-                "status": r.status,
-            }
-            for r in state.repos.values()
-        ]
-    }
+    return {"repos": state.list_repos()}
 
 
 @router.post("/api/repos")
 async def add_repo(repo: RepoAdd):
     """Add new repository."""
-    if repo.name in state.repos:
+    if state.repo_exists(repo.name):
         raise HTTPException(status_code=400, detail="Repository already exists")
-    
+
     new_repo = state.add_repo(repo.name, repo.path)
-    
-    # Broadcast update
+
     await ws_manager.broadcast({
         "type": "repo_added",
-        "repo": new_repo.name,
+        "repo": new_repo["name"],
     })
-    
-    return {"status": "ok", "repo": new_repo.name}
+
+    return {"status": "ok", "repo": new_repo["name"]}
 
 
 @router.delete("/api/repos/{name}")
 async def remove_repo(name: str):
     """Remove repository."""
-    if name not in state.repos:
+    if not state.repo_exists(name):
         raise HTTPException(status_code=404, detail="Repository not found")
-    
-    # Delete from Qdrant
+
     try:
-        client = state.get_qdrant()
-        client.delete_collection(name)
+        state.get_qdrant().delete_collection(name)
     except Exception as e:
         logger.warning(f"Failed to delete Qdrant collection: {e}")
-    
+
     state.remove_repo(name)
-    
+
     await ws_manager.broadcast({
         "type": "repo_removed",
         "repo": name,
     })
-    
+
     return {"status": "ok"}
+
+
+@router.patch("/api/repos/{name}/enabled")
+async def set_repo_enabled(name: str, body: RepoEnabledUpdate):
+    """Enable or disable a repository (affects RAG search)."""
+    if not state.repo_exists(name):
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    set_collection_properties(name, {"enabled": body.enabled})
+
+    await ws_manager.broadcast({
+        "type": "repo_toggled",
+        "repo": name,
+        "enabled": body.enabled,
+    })
+
+    return {"status": "ok", "enabled": body.enabled}
 
 
 @router.post("/api/repos/{name}/reindex")
 async def reindex_repo(name: str, background_tasks: BackgroundTasks):
     """Reindex repository."""
-    if name not in state.repos:
+    repo = state.get_repo(name)
+    if repo is None:
         raise HTTPException(status_code=404, detail="Repository not found")
-    
-    repo = state.repos[name]
-    repo.status = "indexing"
-    
-    # Broadcast start
-    await ws_manager.broadcast({
-        "type": "index_start",
-        "repo": name,
-    })
-    
+
+    state.set_status(name, "indexing")
+    repo_path = repo["path"]
+
+    await ws_manager.broadcast({"type": "index_start", "repo": name})
+
     async def run_index():
         try:
             total_chunks = await index_repository(
-                repo_path=repo.path,
+                repo_path=repo_path,
                 collection_name=name,
                 progress_callback=lambda p: ws_manager.broadcast({
                     "type": "index_progress",
@@ -178,10 +193,86 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
                 "repo": name,
                 "error": str(e),
             })
-    
+
     background_tasks.add_task(run_index)
-    
+
     return {"status": "indexing_started", "repo": name}
+
+
+@router.post("/api/repos/{name}/describe")
+async def describe_repo(name: str):
+    """Generate AI description for repository based on README/AGENTS or code chunks."""
+    repo = state.get_repo(name)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Собираем контекст: сначала README/AGENTS.md из папки репо
+    context_parts: list[str] = []
+    if repo["path"]:
+        for candidate in ("README.md", "AGENTS.md", "readme.md", "README.MD"):
+            candidate_path = Path(repo["path"]) / candidate
+            try:
+                text = candidate_path.read_text(encoding="utf-8", errors="ignore")
+                context_parts.append(f"=== {candidate} ===\n{text[:4000]}")
+            except (OSError, FileNotFoundError):
+                pass
+
+    # Если файлов нет — берём чанки из Qdrant
+    if not context_parts:
+        try:
+            chunks = await search_code(
+                query="project overview purpose architecture",
+                repo_filter=name,
+                top_k=10,
+            )
+            for c in chunks:
+                context_parts.append(f"[{c.get('path', '')}]\n{c.get('content', '')}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch chunks for describe: {e}")
+
+    if not context_parts:
+        raise HTTPException(status_code=422, detail="No content available for description generation")
+
+    context = "\n\n".join(context_parts)
+    prompt = (
+        f"На основе приведённых материалов из репозитория «{name}» "
+        "напиши короткое описание проекта (1–2 предложения). "
+        "Только суть: что это за проект, какую задачу решает. "
+        "Без лишних слов и приветствий.\n\n"
+        f"{context[:6000]}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": config.OPENROUTER_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 200,
+                    "temperature": 0.3,
+                },
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"LLM error {resp.status_code}: {resp.text}")
+
+        description = resp.json()["choices"][0]["message"].get("content", "").strip()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="LLM request timed out")
+
+    set_collection_properties(name, {"description": description})
+
+    await ws_manager.broadcast({
+        "type": "repo_described",
+        "repo": name,
+        "description": description,
+    })
+
+    return {"description": description}
 
 
 @router.get("/api/config")

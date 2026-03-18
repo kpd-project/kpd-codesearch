@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from web.api import router as api_router
 from web.websocket import ws_manager
@@ -21,10 +21,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting KPD CodeSearch Web UI...")
     
-    # Check Qdrant and load repos
-    if state.check_qdrant():
-        state.load_repos_from_qdrant()
-        logger.info(f"Loaded {len(state.repos)} repositories from Qdrant")
+    # Проверяем подключение к Qdrant (repo-данные хранятся в Qdrant и читаются по запросу)
+    state.check_qdrant()
+    logger.info(f"Qdrant status: {state.qdrant_status}")
     
     yield
     
@@ -44,7 +43,7 @@ app = FastAPI(
 app.include_router(api_router)
 
 
-@app.get("/ws/state")
+@app.websocket("/ws/state")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
     await ws_manager.connect(websocket)
@@ -104,10 +103,19 @@ async def root():
     """
 
 
-# Serve static files from ui/dist
+# Serve static files from ui/dist — Vite builds with /assets/ and /favicon.svg at root
 static_path = Path(__file__).parent.parent / "ui" / "dist"
 if static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    assets_path = static_path / "assets"
+    if assets_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+    # Favicon at root (index.html references /favicon.svg)
+    favicon_path = static_path / "favicon.svg"
+    if favicon_path.exists():
+
+        @app.get("/favicon.svg")
+        async def favicon():
+            return FileResponse(str(favicon_path), media_type="image/svg+xml")
 
 
 if __name__ == "__main__":
