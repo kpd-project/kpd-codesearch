@@ -32,7 +32,9 @@ export function StatsGrid({ status }: StatsGridProps) {
     {
       icon: Activity,
       label: "Всего векторов",
-      value: status?.repos.reduce((sum, r) => sum + r.chunks, 0).toLocaleString() ?? "—",
+      value:
+        status?.repos.reduce((sum, r) => sum + r.chunks, 0).toLocaleString() ??
+        "—",
       isNumber: true,
     },
     {

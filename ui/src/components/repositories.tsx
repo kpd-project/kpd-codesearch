@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStatus } from "@/hooks/use-api";
 import { useRepos } from "@/hooks/use-repos";
 import { useRepoDescribe } from "@/hooks/use-repo-describe";
+import { useSystemConfig } from "@/hooks/use-system-config";
 import { StatsGrid } from "@/components/stats/stats-grid";
 import {
   IndexingProgress,
@@ -12,8 +13,11 @@ import {
 
 export function Repositories() {
   const { status, loading, refetch } = useStatus();
+  const { config } = useSystemConfig();
   const { addRepo, removeRepo, reindexRepo, toggleRepo } = useRepos(refetch);
   const { describing, describe } = useRepoDescribe(refetch);
+
+  const basePath = config?.repos?.base_path || "";
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [reindexing, setReindexing] = useState<string | null>(null);
@@ -48,6 +52,7 @@ export function Repositories() {
           open={isAddOpen}
           onOpenChange={setIsAddOpen}
           onAdd={addRepo}
+          basePath={basePath}
         />
       </div>
 
@@ -65,6 +70,7 @@ export function Repositories() {
             repo={repo}
             onClick={handleOpenRepoCard}
             onToggle={toggleRepo}
+            onCreateIndex={handleReindex}
           />
         ))}
       </div>

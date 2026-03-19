@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, RotateCcw, Trash2, Sparkles } from "lucide-react";
+import { Loader2, RotateCcw, Trash2, Sparkles, Play } from "lucide-react";
 import type { Repo } from "@/types/repo";
 
 interface RepoCardModalProps {
@@ -36,6 +36,8 @@ export function RepoCardModal({
   onDescribe,
 }: RepoCardModalProps) {
   const [isRemoving, setIsRemoving] = useState(false);
+
+  const neverIndexed = !!repo && repo.chunks === 0 && !repo.last_indexed;
 
   const handleClose = (newOpen: boolean) => {
     onOpenChange(newOpen);
@@ -66,7 +68,9 @@ export function RepoCardModal({
         </DialogHeader>
 
         {!repo ? (
-          <div className="text-sm text-muted-foreground">Репозиторий не найден.</div>
+          <div className="text-sm text-muted-foreground">
+            Репозиторий не найден.
+          </div>
         ) : (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -80,7 +84,9 @@ export function RepoCardModal({
                 />
               </div>
               <div>
-                <Label htmlFor="repo-chunks-readonly">Количество векторов</Label>
+                <Label htmlFor="repo-chunks-readonly">
+                  Количество векторов
+                </Label>
                 <Input
                   id="repo-chunks-readonly"
                   readOnly
@@ -89,7 +95,9 @@ export function RepoCardModal({
                 />
               </div>
               <div className="md:col-span-2">
-                <Label htmlFor="repo-last-indexed-readonly">Последняя индексация</Label>
+                <Label htmlFor="repo-last-indexed-readonly">
+                  Последняя индексация
+                </Label>
                 <Input
                   id="repo-last-indexed-readonly"
                   readOnly
@@ -97,8 +105,8 @@ export function RepoCardModal({
                     repo.last_indexed
                       ? new Date(repo.last_indexed).toLocaleString("ru")
                       : repo.chunks > 0
-                        ? "Неизвестно"
-                        : "Никогда"
+                      ? "Неизвестно"
+                      : "Никогда"
                   }
                   className="mt-1"
                 />
@@ -142,20 +150,24 @@ export function RepoCardModal({
               </pre>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-2">
+            <div className="flex  items-center gap-2 pt-2 flex-row">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => onReindex(repo.name)}
-                disabled={reindexing === repo.name || repo.status === "indexing"}
-                title="Переиндексировать"
+                disabled={
+                  reindexing === repo.name || repo.status === "indexing"
+                }
+                title={neverIndexed ? "Создать индекс" : "Переиндексировать"}
               >
                 {reindexing === repo.name || repo.status === "indexing" ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : neverIndexed ? (
+                  <Play className="w-4 h-4 mr-2" />
                 ) : (
                   <RotateCcw className="w-4 h-4 mr-2" />
                 )}
-                Переиндексировать
+                {neverIndexed ? "Создать индекс" : "Переиндексировать"}
               </Button>
 
               <Button
