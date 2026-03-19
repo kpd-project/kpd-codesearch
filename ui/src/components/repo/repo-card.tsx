@@ -1,21 +1,31 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Play } from "lucide-react";
 import type { Repo } from "@/types/repo";
 
 interface RepoCardProps {
   repo: Repo;
   onClick: (name: string) => void;
   onToggle: (name: string, enabled: boolean) => void;
+  onCreateIndex?: (name: string) => void;
 }
 
-export function RepoCard({ repo, onClick, onToggle }: RepoCardProps) {
+export function RepoCard({
+  repo,
+  onClick,
+  onToggle,
+  onCreateIndex,
+}: RepoCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onClick(repo.name);
     }
   };
+
+  const neverIndexed = repo.chunks === 0 && !repo.last_indexed;
 
   return (
     <Card
@@ -47,10 +57,12 @@ export function RepoCard({ repo, onClick, onToggle }: RepoCardProps) {
               <span className="mx-1">·</span>
               <span>
                 {repo.last_indexed
-                  ? `Последняя индексация: ${new Date(repo.last_indexed).toLocaleString("ru")}`
+                  ? `Последняя индексация: ${new Date(
+                      repo.last_indexed
+                    ).toLocaleString("ru")}`
                   : repo.chunks > 0
-                    ? "Последняя индексация: Неизвестно"
-                    : "Последняя индексация: Никогда не индексировался"}
+                  ? "Последняя индексация: Неизвестно"
+                  : "Последняя индексация: Никогда не индексировался"}
               </span>
             </div>
 
@@ -66,14 +78,28 @@ export function RepoCard({ repo, onClick, onToggle }: RepoCardProps) {
           </div>
 
           <div
-            className="flex items-center shrink-0 mr-1"
+            className="flex flex-row items-center gap-2 shrink-0 mr-1"
             onClick={(e) => e.stopPropagation()}
             role="presentation"
           >
+            {neverIndexed && onCreateIndex && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onCreateIndex(repo.name)}
+                disabled={repo.status === "indexing"}
+                title="Создать индекс"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Создать индекс
+              </Button>
+            )}
             <Switch
               checked={repo.enabled}
               onCheckedChange={(v) => onToggle(repo.name, v)}
-              title={repo.enabled ? "Отключить репозиторий" : "Включить репозиторий"}
+              title={
+                repo.enabled ? "Отключить репозиторий" : "Включить репозиторий"
+              }
             />
           </div>
         </div>

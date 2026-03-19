@@ -6,6 +6,8 @@ export interface Repo {
   last_indexed: string | null;
   status: string;
   description?: string | null;
+  embedder_model?: string | null;
+  embedder_dimension?: number | null;
 }
 
 export interface RepoStatus {

@@ -15,22 +15,33 @@ interface AddRepoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (name: string, path: string) => Promise<void>;
+  basePath?: string;
 }
 
 export function AddRepoDialog({
   open,
   onOpenChange,
   onAdd,
+  basePath = "",
 }: AddRepoDialogProps) {
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
 
   const handleAdd = async () => {
-    if (!name || !path) return;
-    await onAdd(name, path);
-    setName("");
-    setPath("");
-    onOpenChange(false);
+    console.log("handleAdd called", { name, path });
+    if (!name || !path) {
+      console.log("Empty fields, returning");
+      return;
+    }
+    console.log("Calling onAdd");
+    try {
+      await onAdd(name, path);
+      console.log("onAdd completed");
+    } finally {
+      setName("");
+      setPath("");
+      onOpenChange(false);
+    }
   };
 
   return (
@@ -50,21 +61,32 @@ export function AddRepoDialog({
         <div className="space-y-4 mt-4">
           <div>
             <Label htmlFor="repo-name">Название</Label>
-            <Input
+            <input
               id="repo-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                console.log("name changed:", e.target.value);
+                setName(e.target.value);
+              }}
               placeholder="e.g., kpd-backend"
+              className="flex h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 py-1 text-base"
             />
           </div>
           <div>
             <Label htmlFor="repo-path">Путь</Label>
-            <Input
-              id="repo-path"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="e.g., d:/kpd-project/kpd-backend"
-            />
+            <div className="flex items-center gap-2">
+              {basePath && (
+                <span className="text-muted-foreground text-sm shrink-0">
+                  {basePath}/
+                </span>
+              )}
+              <Input
+                id="repo-path"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="kpd-backend"
+              />
+            </div>
           </div>
           <Button onClick={handleAdd} className="w-full">
             Добавить
