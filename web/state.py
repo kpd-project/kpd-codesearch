@@ -19,6 +19,7 @@ from rag.repos_metadata import get_metadata, set_metadata, remove_metadata
 logger = logging.getLogger(__name__)
 
 _METADATA_FILE = Path(__file__).parent.parent / "repos_metadata.json"
+_UNSET = object()
 
 
 def _normalize_relative_path(value: str | None) -> str | None:
@@ -99,7 +100,9 @@ class State:
         abs_path = _resolve_repo_abs_path(name, metadata)
         return {
             "name": name,
-            "display_name": props.get("display_name") if props.get("display_name") is not None else metadata.get("display_name"),
+            # display_name — часть локальной metadata (не Qdrant), чтобы его можно было
+            # надёжно очищать и обновлять без особенностей PATCH /properties.
+            "display_name": metadata.get("display_name"),
             "path": abs_path,
             "relative_path": relative_path,
             "indexed_path": indexed_path,
@@ -158,7 +161,6 @@ class State:
         """Регистрирует репо: создаёт пустую коллекцию и сохраняет metadata."""
         create_collection(name)
         set_collection_properties(name, {
-            "display_name": name,
             "description": None,
             "short_description": None,
         })
@@ -210,35 +212,44 @@ class State:
     def update_repo_card(
         self,
         name: str,
-        display_name: str | None = None,
-        short_description: str | None = None,
-        description: str | None = None,
-        relative_path: str | None = None,
+        display_name: object = _UNSET,
+        short_description: object = _UNSET,
+        description: object = _UNSET,
+        relative_path: object = _UNSET,
     ) -> dict:
         """Update editable fields in repo card."""
         metadata = get_metadata(name)
         props_update: dict[str, str | None] = {}
-        if display_name is not None:
-            normalized = display_name.strip()
-            if normalized:
-                metadata["display_name"] = normalized
-                props_update["display_name"] = normalized
-            else:
+        if display_name is not _UNSET:
+            if display_name is None:
                 metadata.pop("display_name", None)
-                props_update["display_name"] = None
-
-        if short_description is not None:
-            props_update["short_description"] = short_description
-        if description is not None:
-            metadata["description"] = description
-            props_update["description"] = description
-
-        if relative_path is not None:
-            normalized_rel = _normalize_relative_path(relative_path)
-            if normalized_rel:
-                metadata["relative_path"] = normalized_rel
+                # Qdrant properties PATCH может игнорировать null; пустая строка
+                # гарантированно "перебивает" предыдущее значение.
+                props_update["display_name"] = ""
             else:
+                normalized = str(display_name).strip()
+                if normalized:
+                    metadata["display_name"] = normalized
+                    props_update["display_name"] = normalized
+                else:
+                    metadata.pop("display_name", None)
+                    props_update["display_name"] = ""
+
+        if short_description is not _UNSET:
+            props_update["short_description"] = None if short_description is None else str(short_description)
+        if description is not _UNSET:
+            metadata["description"] = "" if description is None else str(description)
+            props_update["description"] = metadata["description"]
+
+        if relative_path is not _UNSET:
+            if relative_path is None:
                 metadata.pop("relative_path", None)
+            else:
+                normalized_rel = _normalize_relative_path(str(relative_path))
+                if normalized_rel:
+                    metadata["relative_path"] = normalized_rel
+                else:
+                    metadata.pop("relative_path", None)
         set_metadata(name, metadata)
         if props_update:
             set_collection_properties(name, props_update)
