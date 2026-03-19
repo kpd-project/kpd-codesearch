@@ -48,12 +48,14 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_allowed(user.id if user else None):
         return
-    repos = config.REPOS_WHITELIST
-    text = "📁 Доступные репозитории:\n\n"
-    for repo in repos:
-        exists = rag.collection_exists(repo)
-        status = "✅" if exists else "❌"
-        text += f"{status} {repo}\n"
+    repos = rag.list_collections()
+    text = "📁 Проиндексированные репозитории:\n\n"
+    if not repos:
+        text += "Нет проиндексированных репозиториев."
+    else:
+        for repo in repos:
+            info = rag.get_collection_info(repo)
+            text += f"✅ {repo}: {info['vectors_count']} векторов\n"
     await update.message.reply_text(text)
 
 
@@ -77,10 +79,6 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     repo_name = args[0]
-    
-    if repo_name not in config.REPOS_WHITELIST:
-        await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
     
     progress_queue = queue.Queue()
     status_msg = await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
@@ -155,7 +153,7 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         keyboard = [
             [InlineKeyboardButton(repo, callback_data=f"reindex:{repo}")]
-            for repo in config.REPOS_WHITELIST
+            for repo in rag.list_collections()
         ]
         await update.message.reply_text(
             "Выбери репозиторий для переиндексации:",
@@ -164,10 +162,6 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     repo_name = args[0]
-    
-    if repo_name not in config.REPOS_WHITELIST:
-        await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
     
     status_msg = await update.message.reply_text(f"🔄 Переиндексирую {repo_name}...")
     await _run_reindex(status_msg, repo_name)
@@ -210,10 +204,6 @@ async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     repo_name = query.data.split(":", 1)[1]
 
-    if repo_name not in config.REPOS_WHITELIST:
-        await query.edit_message_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
-
     await query.edit_message_text(f"🔄 Переиндексирую {repo_name}...")
     status_msg = query.message
     await _run_reindex(status_msg, repo_name)
@@ -225,12 +215,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = "📊 Статус коллекций:\n\n"
     
-    for repo in config.REPOS_WHITELIST:
-        if rag.collection_exists(repo):
+    collections = rag.list_collections()
+    if not collections:
+        text += "Нет коллекций."
+    else:
+        for repo in collections:
             info = rag.get_collection_info(repo)
             text += f"✅ {repo}: {info['vectors_count']} векторов\n"
-        else:
-            text += f"❌ {repo}: не создана\n"
     
     await update.message.reply_text(text)
 

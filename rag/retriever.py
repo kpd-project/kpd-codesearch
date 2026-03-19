@@ -2,7 +2,8 @@ import asyncio
 from qdrant_client import QdrantClient
 import config
 from .embeddings import get_embeddings
-from .qdrant_client import get_client, collection_exists, get_collection_properties
+from .qdrant_client import get_client, collection_exists, list_collections
+from .repos_metadata import get_enabled
 
 
 def search_in_repo(repo_name: str, query: str, top_k: int = 5, min_score: float | None = None) -> list[dict]:
@@ -35,10 +36,10 @@ def search_in_repo(repo_name: str, query: str, top_k: int = 5, min_score: float 
 def search_all_repos(query: str, top_k: int = 3, min_score: float | None = None) -> list[dict]:
     all_results = []
     
-    for repo_name in config.REPOS_WHITELIST:
+    for repo_name in list_collections():
         if not collection_exists(repo_name):
             continue
-        if not get_collection_properties(repo_name).get("enabled", True):
+        if not get_enabled(repo_name):
             continue
         results = search_in_repo(repo_name, query, top_k, min_score)
         for r in results:

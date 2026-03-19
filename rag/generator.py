@@ -4,7 +4,7 @@ import requests
 import httpx
 import config
 from .retriever import search_all_repos, search_in_repo
-from .qdrant_client import collection_exists
+from .qdrant_client import collection_exists, list_collections
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ TOOLS = [
 def _execute_tool(name: str, args: dict, on_status=None) -> str:
     logger.debug("Tool call: %s(%s)", name, args)
     if name == "list_indexed_repos":
-        indexed = [r for r in config.REPOS_WHITELIST if collection_exists(r)]
+        indexed = list_collections()
         if not indexed:
             return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."
         return f"Проиндексированы: {', '.join(indexed)}"
