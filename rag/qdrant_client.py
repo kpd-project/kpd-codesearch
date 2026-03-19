@@ -77,7 +77,7 @@ def _rest_headers() -> dict:
 
 
 def get_collection_properties(collection_name: str) -> dict:
-    """Читает произвольные метаданные коллекции (path, description, last_indexed, enabled)."""
+    """Читает произвольные метаданные коллекции (description, short_description и т.д.)."""
     url = f"{_rest_base()}/collections/{collection_name}/properties"
     try:
         resp = httpx.get(url, headers=_rest_headers(), verify=False, timeout=10)

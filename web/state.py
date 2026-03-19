@@ -12,6 +12,7 @@ from rag.qdrant_client import (
     collection_exists,
     create_collection,
     get_collection_properties,
+    set_collection_properties,
 )
 from rag.repos_metadata import get_metadata, set_metadata, remove_metadata
 
@@ -32,7 +33,7 @@ class RuntimeSettings:
 class State:
     """Global application state.
 
-    Persistent per-repo данные (path, enabled, description, last_indexed) хранятся
+    Persistent per-repo данные (path, enabled, description, short_description, last_indexed) хранятся
     в Qdrant Collection Properties через REST API.
     Эфемерное (статус индексации) — в памяти.
     """
@@ -73,7 +74,8 @@ class State:
             "chunks": chunks,
             "last_indexed": metadata.get("last_indexed"),
             "status": self._repo_status.get(name, "idle"),
-            "description": metadata.get("description"),
+            "description": props.get("description") or metadata.get("description"),
+            "short_description": props.get("short_description"),
             "embedder_model": props.get("embedder_model"),
             "embedder_dimension": props.get("embedder_dimension"),
         }
@@ -122,6 +124,10 @@ class State:
     def add_repo(self, name: str, path: str) -> dict:
         """Регистрирует репо: создаёт пустую коллекцию и сохраняет metadata."""
         create_collection(name)
+        set_collection_properties(name, {
+            "description": None,
+            "short_description": None,
+        })
         set_metadata(name, {"path": path, "enabled": False})
         return self._build_repo(name, 0, get_metadata(name))
 
@@ -143,6 +149,11 @@ class State:
         metadata = get_metadata(name)
         metadata["description"] = description
         set_metadata(name, metadata)
+        set_collection_properties(name, {"description": description})
+
+    def set_repo_short_description(self, name: str, short_description: str | None):
+        """Update short repo description in Qdrant collection properties."""
+        set_collection_properties(name, {"short_description": short_description})
 
     def remove_repo(self, name: str) -> bool:
         """Очищает эфемерный статус. Коллекцию удаляет вызывающий код."""
