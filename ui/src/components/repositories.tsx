@@ -70,6 +70,7 @@ export function Repositories() {
             onClick={handleOpenRepoCard}
             onToggle={toggleRepo}
             onCreateIndex={handleReindex}
+            onReindex={handleReindex}
           />
         ))}
       </div>
