@@ -10,7 +10,7 @@ import config
 from .chunker import chunk_file
 from .chunker.base import iter_code_files
 from .embeddings import get_async_embeddings
-from .qdrant_client import get_client, create_collection
+from .qdrant_client import get_client, create_collection, set_collection_properties
 
 INDEX_STATE_DIR = Path(__file__).resolve().parent.parent / ".index_state"
 
@@ -120,11 +120,12 @@ async def index_repo_async(
     if not repo_path.exists():
         return {"error": f"Repository not found: {repo_name}"}
 
-    if not repo_path_override and repo_name not in config.REPOS_WHITELIST:
-        return {"error": f"Repository not in whitelist: {repo_name}"}
-
     log(f"\n[reindex] {repo_name}")
     create_collection(repo_name)
+    set_collection_properties(repo_name, {
+        "embedder_model": config.EMBEDDINGS_MODEL,
+        "embedder_dimension": config.EMBEDDINGS_DIMENSION,
+    })
 
     state_path = _state_path(repo_name)
     if not resume:
