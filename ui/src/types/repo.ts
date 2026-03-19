@@ -1,6 +1,9 @@
 export interface Repo {
   name: string;
+  display_name?: string | null;
   path: string;
+  relative_path?: string | null;
+  indexed_path?: string | null;
   enabled: boolean;
   chunks: number;
   last_indexed: string | null;

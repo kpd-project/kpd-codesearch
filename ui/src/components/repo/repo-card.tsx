@@ -32,6 +32,8 @@ export function RepoCard({
     ? "Отключить репозиторий"
     : "Включить репозиторий";
 
+  const title = repo.display_name?.trim() ? repo.display_name.trim() : null;
+
   return (
     <Card
       onClick={() => onClick(repo.name)}
@@ -44,9 +46,15 @@ export function RepoCard({
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold uppercase text-lg text-foreground">
-                {repo.name}
-              </span>
+              {title ? (
+                <span className="font-semibold uppercase text-lg text-foreground">
+                  {title}
+                </span>
+              ) : (
+                <span className="font-semibold uppercase text-lg text-foreground">
+                  Идентификатор: {repo.name}
+                </span>
+              )}
               {repo.status === "indexing" && (
                 <Badge variant="secondary" className="text-yellow-500">
                   Индексация…

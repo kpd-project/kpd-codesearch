@@ -57,6 +57,14 @@ class RepoEnabledUpdate(BaseModel):
     enabled: bool
 
 
+class RepoCardUpdate(BaseModel):
+    """Editable fields in repo card."""
+    display_name: Optional[str] = None
+    relative_path: Optional[str] = None
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+
+
 class QueryRequest(BaseModel):
     """RAG query request."""
     message: str
@@ -155,6 +163,28 @@ async def set_repo_enabled(name: str, body: RepoEnabledUpdate):
     return {"status": "ok", "enabled": repo["enabled"]}
 
 
+@router.patch("/api/repos/{name}")
+async def update_repo_card(name: str, body: RepoCardUpdate):
+    """Update editable fields in repository card."""
+    if not state.repo_exists(name):
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    updated = state.update_repo_card(
+        name=name,
+        display_name=body.display_name,
+        short_description=body.short_description,
+        description=body.description,
+        relative_path=body.relative_path,
+    )
+
+    await ws_manager.broadcast({
+        "type": "repo_updated",
+        "repo": name,
+    })
+
+    return {"status": "ok", "repo": updated}
+
+
 @router.post("/api/repos/{name}/reindex")
 async def reindex_repo(name: str, background_tasks: BackgroundTasks):
     """Reindex repository."""
@@ -178,7 +208,7 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
                     "progress": p,
                 })
             )
-            state.complete_indexing(name, total_chunks)
+            state.complete_indexing(name, total_chunks, indexed_path=repo_path)
             await ws_manager.broadcast({
                 "type": "index_complete",
                 "repo": name,
@@ -263,15 +293,23 @@ async def describe_repo(name: str):
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="LLM request timed out")
 
+    short_description = description.split(".")[0].strip()
+    if len(short_description) > 140:
+        short_description = short_description[:137].rstrip() + "..."
+    if not short_description:
+        short_description = description[:140].rstrip()
+
     state.set_repo_description(name, description)
+    state.set_repo_short_description(name, short_description)
 
     await ws_manager.broadcast({
         "type": "repo_described",
         "repo": name,
         "description": description,
+        "short_description": short_description,
     })
 
-    return {"description": description}
+    return {"description": description, "short_description": short_description}
 
 
 @router.get("/api/config/system")
