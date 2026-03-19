@@ -26,6 +26,11 @@ export function RepoCard({
   };
 
   const neverIndexed = repo.chunks === 0 && !repo.last_indexed;
+  const switchTitle = neverIndexed
+    ? "Репозиторий недоступен до первой индексации"
+    : repo.enabled
+    ? "Отключить репозиторий"
+    : "Включить репозиторий";
 
   return (
     <Card
@@ -96,10 +101,9 @@ export function RepoCard({
             )}
             <Switch
               checked={repo.enabled}
+              disabled={neverIndexed}
               onCheckedChange={(v) => onToggle(repo.name, v)}
-              title={
-                repo.enabled ? "Отключить репозиторий" : "Включить репозиторий"
-              }
+              title={switchTitle}
             />
           </div>
         </div>

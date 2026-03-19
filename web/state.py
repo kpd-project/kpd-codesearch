@@ -122,7 +122,7 @@ class State:
     def add_repo(self, name: str, path: str) -> dict:
         """Регистрирует репо: создаёт пустую коллекцию и сохраняет metadata."""
         create_collection(name)
-        set_metadata(name, {"path": path, "enabled": True})
+        set_metadata(name, {"path": path, "enabled": False})
         return self._build_repo(name, 0, get_metadata(name))
 
     def set_repo_enabled(self, name: str, enabled: bool) -> dict:
