@@ -1,18 +1,16 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Chat } from "@/components/chat";
 import { Repositories } from "@/components/repositories";
-import { SettingsPanel } from "@/components/settings-panel";
 import { useWebSocket, useStatus } from "@/hooks/use-api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Circle, Settings, HelpCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("chat");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { connected } = useWebSocket();
   const { status } = useStatus();
 
@@ -39,19 +37,11 @@ export default function App() {
           </TabsList>
         </div>
         <div className="flex items-center gap-2">
-          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-            <DialogTrigger
-              render={
-                <Button variant="ghost" size="sm" title="Настройки">
-                  <Settings className="w-4 h-4" />
-                </Button>
-              }
-            />
-            <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-              <DialogTitle>Настройки</DialogTitle>
-              <SettingsPanel />
-            </DialogContent>
-          </Dialog>
+          <Link to="/settings">
+            <Button variant="ghost" size="sm" title="Настройки">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </Link>
           <Button variant="ghost" size="sm" disabled title="Справка (скоро)">
             <HelpCircle className="w-4 h-4" />
           </Button>
