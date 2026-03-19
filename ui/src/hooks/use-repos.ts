@@ -1,5 +1,12 @@
 import { useCallback } from "react";
 
+interface RepoCardUpdatePayload {
+  display_name: string | null;
+  relative_path: string | null;
+  short_description: string;
+  description: string;
+}
+
 export function useRepos(refetch: () => Promise<void>) {
   const addRepo = useCallback(
     async (name: string, path: string) => {
@@ -39,5 +46,17 @@ export function useRepos(refetch: () => Promise<void>) {
     [refetch]
   );
 
-  return { addRepo, removeRepo, reindexRepo, toggleRepo };
+  const updateRepoCard = useCallback(
+    async (name: string, payload: RepoCardUpdatePayload) => {
+      await fetch(`/api/repos/${name}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await refetch();
+    },
+    [refetch]
+  );
+
+  return { addRepo, removeRepo, reindexRepo, toggleRepo, updateRepoCard };
 }

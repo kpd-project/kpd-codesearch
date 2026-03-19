@@ -14,13 +14,13 @@ import {
 export function Repositories() {
   const { status, loading, refetch } = useStatus();
   const { config } = useSystemConfig();
-  const { addRepo, removeRepo, reindexRepo, toggleRepo } = useRepos(refetch);
+  const { addRepo, removeRepo, reindexRepo, toggleRepo, updateRepoCard } =
+    useRepos(refetch);
   const { describing, describe } = useRepoDescribe(refetch);
 
   const basePath = config?.repos?.base_path || "";
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [reindexing, setReindexing] = useState<string | null>(null);
   const [repoCardOpen, setRepoCardOpen] = useState(false);
   const [activeRepoName, setActiveRepoName] = useState<string | null>(null);
 
@@ -32,7 +32,6 @@ export function Repositories() {
   };
 
   const handleReindex = async (name: string) => {
-    setReindexing(name);
     await reindexRepo(name);
   };
 
@@ -82,11 +81,10 @@ export function Repositories() {
           if (!open) setActiveRepoName(null);
         }}
         repo={activeRepo}
-        reindexing={reindexing}
         describing={describing}
-        onReindex={handleReindex}
         onRemove={removeRepo}
         onDescribe={describe}
+        onSave={updateRepoCard}
       />
     </div>
   );

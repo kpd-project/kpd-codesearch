@@ -21,6 +21,33 @@ logger = logging.getLogger(__name__)
 _METADATA_FILE = Path(__file__).parent.parent / "repos_metadata.json"
 
 
+def _normalize_relative_path(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().replace("\\", "/")
+    if not normalized:
+        return None
+    return normalized.lstrip("/")
+
+
+def _resolve_repo_abs_path(repo_name: str, metadata: dict) -> str:
+    """Абсолютный путь, который будет использован при индексации прямо сейчас."""
+    rel = _normalize_relative_path(metadata.get("relative_path"))
+    if rel:
+        return str((config.REPOS_BASE_PATH / rel).resolve())
+
+    legacy_path = metadata.get("path")
+    if legacy_path:
+        try:
+            p = Path(legacy_path)
+            if p.is_absolute():
+                return str(p.resolve())
+        except Exception:
+            pass
+
+    return str((config.REPOS_BASE_PATH / repo_name).resolve())
+
+
 @dataclass
 class RuntimeSettings:
     """Runtime configurable settings."""
@@ -67,9 +94,15 @@ class State:
             metadata = get_metadata(name)
         if props is None:
             props = get_collection_properties(name)
+        relative_path = _normalize_relative_path(metadata.get("relative_path"))
+        indexed_path = metadata.get("indexed_path")
+        abs_path = _resolve_repo_abs_path(name, metadata)
         return {
             "name": name,
-            "path": metadata.get("path") or str(config.REPOS_BASE_PATH / name),
+            "display_name": props.get("display_name") if props.get("display_name") is not None else metadata.get("display_name"),
+            "path": abs_path,
+            "relative_path": relative_path,
+            "indexed_path": indexed_path,
             "enabled": metadata.get("enabled", True),
             "chunks": chunks,
             "last_indexed": metadata.get("last_indexed"),
@@ -125,10 +158,29 @@ class State:
         """Регистрирует репо: создаёт пустую коллекцию и сохраняет metadata."""
         create_collection(name)
         set_collection_properties(name, {
+            "display_name": name,
             "description": None,
             "short_description": None,
         })
-        set_metadata(name, {"path": path, "enabled": False})
+        relative_path: str | None = None
+        try:
+            p = Path(path)
+            if p.is_absolute():
+                try:
+                    relative_path = str(p.resolve().relative_to(config.REPOS_BASE_PATH.resolve())).replace("\\", "/")
+                except Exception:
+                    relative_path = None
+            else:
+                relative_path = _normalize_relative_path(path)
+        except Exception:
+            relative_path = _normalize_relative_path(path)
+
+        data: dict = {"enabled": False}
+        if relative_path:
+            data["relative_path"] = relative_path
+        else:
+            data["path"] = path
+        set_metadata(name, data)
         return self._build_repo(name, 0, get_metadata(name))
 
     def set_repo_enabled(self, name: str, enabled: bool) -> dict:
@@ -155,6 +207,50 @@ class State:
         """Update short repo description in Qdrant collection properties."""
         set_collection_properties(name, {"short_description": short_description})
 
+    def update_repo_card(
+        self,
+        name: str,
+        display_name: str | None = None,
+        short_description: str | None = None,
+        description: str | None = None,
+        relative_path: str | None = None,
+    ) -> dict:
+        """Update editable fields in repo card."""
+        metadata = get_metadata(name)
+        props_update: dict[str, str | None] = {}
+        if display_name is not None:
+            normalized = display_name.strip()
+            if normalized:
+                metadata["display_name"] = normalized
+                props_update["display_name"] = normalized
+            else:
+                metadata.pop("display_name", None)
+                props_update["display_name"] = None
+
+        if short_description is not None:
+            props_update["short_description"] = short_description
+        if description is not None:
+            metadata["description"] = description
+            props_update["description"] = description
+
+        if relative_path is not None:
+            normalized_rel = _normalize_relative_path(relative_path)
+            if normalized_rel:
+                metadata["relative_path"] = normalized_rel
+            else:
+                metadata.pop("relative_path", None)
+        set_metadata(name, metadata)
+        if props_update:
+            set_collection_properties(name, props_update)
+
+        chunks = 0
+        try:
+            info = self.get_qdrant().get_collection(name)
+            chunks = info.points_count or 0
+        except Exception:
+            pass
+        return self._build_repo(name, chunks, metadata)
+
     def remove_repo(self, name: str) -> bool:
         """Очищает эфемерный статус. Коллекцию удаляет вызывающий код."""
         self._repo_status.pop(name, None)
@@ -169,11 +265,13 @@ class State:
         self.indexing_progress[repo] = progress
         self._repo_status[repo] = "indexing"
 
-    def complete_indexing(self, repo: str, chunks: int):
+    def complete_indexing(self, repo: str, chunks: int, indexed_path: str | None = None):
         self.indexing_progress.pop(repo, None)
         self._repo_status.pop(repo, None)
         metadata = get_metadata(repo)
         metadata["last_indexed"] = datetime.now().isoformat()
+        if indexed_path:
+            metadata["indexed_path"] = indexed_path
         set_metadata(repo, metadata)
 
     def error_indexing(self, repo: str):
