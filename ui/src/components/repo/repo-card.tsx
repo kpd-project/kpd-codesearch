@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Play } from "lucide-react";
+import { Play, RefreshCw } from "lucide-react";
 import type { Repo } from "@/types/repo";
 
 interface RepoCardProps {
@@ -10,6 +10,7 @@ interface RepoCardProps {
   onClick: (name: string) => void;
   onToggle: (name: string, enabled: boolean) => void;
   onCreateIndex?: (name: string) => void;
+  onReindex?: (name: string) => void;
 }
 
 export function RepoCard({
@@ -17,6 +18,7 @@ export function RepoCard({
   onClick,
   onToggle,
   onCreateIndex,
+  onReindex,
 }: RepoCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -105,6 +107,18 @@ export function RepoCard({
               >
                 <Play className="w-4 h-4 mr-2" />
                 Создать индекс
+              </Button>
+            )}
+            {!neverIndexed && onReindex && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onReindex(repo.name)}
+                disabled={repo.status === "indexing"}
+                title="Переиндексировать"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Переиндексировать
               </Button>
             )}
             <Switch
