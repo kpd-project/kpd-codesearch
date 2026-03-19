@@ -1,5 +1,5 @@
 """FastAPI endpoints for web UI."""
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -164,18 +164,27 @@ async def set_repo_enabled(name: str, body: RepoEnabledUpdate):
 
 
 @router.patch("/api/repos/{name}")
-async def update_repo_card(name: str, body: RepoCardUpdate):
+async def update_repo_card(name: str, request: Request, body: RepoCardUpdate):
     """Update editable fields in repository card."""
     if not state.repo_exists(name):
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    updated = state.update_repo_card(
-        name=name,
-        display_name=body.display_name,
-        short_description=body.short_description,
-        description=body.description,
-        relative_path=body.relative_path,
-    )
+    try:
+        raw_payload = await request.json()
+        fields_set = set(raw_payload.keys()) if isinstance(raw_payload, dict) else set()
+    except Exception:
+        fields_set = set()
+    update_kwargs: dict = {"name": name}
+    if "display_name" in fields_set:
+        update_kwargs["display_name"] = body.display_name
+    if "short_description" in fields_set:
+        update_kwargs["short_description"] = body.short_description
+    if "description" in fields_set:
+        update_kwargs["description"] = body.description
+    if "relative_path" in fields_set:
+        update_kwargs["relative_path"] = body.relative_path
+
+    updated = state.update_repo_card(**update_kwargs)
 
     await ws_manager.broadcast({
         "type": "repo_updated",

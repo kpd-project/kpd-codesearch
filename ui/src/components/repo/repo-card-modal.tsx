@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -46,21 +46,60 @@ export function RepoCardModal({
   const [relativePath, setRelativePath] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [description, setDescription] = useState("");
+  const [dirty, setDirty] = useState({
+    displayName: false,
+    relativePath: false,
+    shortDescription: false,
+    description: false,
+  });
+  const [hydratedRepoName, setHydratedRepoName] = useState<string | null>(null);
   const identifierPattern = /^[A-Za-z0-9_-]+$/;
 
   useEffect(() => {
+    if (!open) return;
     if (!repo) {
       setDisplayName("");
       setRelativePath("");
       setShortDescription("");
       setDescription("");
+      setDirty({
+        displayName: false,
+        relativePath: false,
+        shortDescription: false,
+        description: false,
+      });
+      setHydratedRepoName(null);
       return;
     }
-    setDisplayName(repo.display_name ?? repo.name);
-    setRelativePath(repo.relative_path ?? "");
-    setShortDescription(repo.short_description ?? "");
-    setDescription(repo.description ?? "");
-  }, [repo]);
+
+    // Гидратируем форму при первом открытии или смене репозитория.
+    if (hydratedRepoName !== repo.name) {
+      setDisplayName(repo.display_name ?? "");
+      setRelativePath(repo.relative_path ?? "");
+      setShortDescription(repo.short_description ?? "");
+      setDescription(repo.description ?? "");
+      setDirty({
+        displayName: false,
+        relativePath: false,
+        shortDescription: false,
+        description: false,
+      });
+      setHydratedRepoName(repo.name);
+      return;
+    }
+
+    // При синхронизации обновляем только "не тронутые" поля.
+    if (!dirty.displayName) setDisplayName(repo.display_name ?? "");
+    if (!dirty.relativePath) setRelativePath(repo.relative_path ?? "");
+    if (!dirty.shortDescription) setShortDescription(repo.short_description ?? "");
+    if (!dirty.description) setDescription(repo.description ?? "");
+  }, [open, repo, hydratedRepoName, dirty]);
+
+  const canSave = useMemo(() => {
+    if (!repo) return false;
+    if (isSaving || isRemoving) return false;
+    return true;
+  }, [repo, isSaving, isRemoving]);
 
   const handleClose = (newOpen: boolean) => {
     onOpenChange(newOpen);
@@ -89,6 +128,12 @@ export function RepoCardModal({
         relative_path: relativePath.trim() ? relativePath.trim() : null,
         short_description: shortDescription.trim(),
         description: description.trim(),
+      });
+      setDirty({
+        displayName: false,
+        relativePath: false,
+        shortDescription: false,
+        description: false,
       });
     } finally {
       setIsSaving(false);
@@ -137,7 +182,10 @@ export function RepoCardModal({
               <Input
                 id="repo-name-editable"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  setDirty((prev) => ({ ...prev, displayName: true }));
+                }}
                 className="mt-1"
               />
             </div>
@@ -149,7 +197,10 @@ export function RepoCardModal({
               <Input
                 id="repo-relative-path-editable"
                 value={relativePath}
-                onChange={(e) => setRelativePath(e.target.value)}
+                onChange={(e) => {
+                  setRelativePath(e.target.value);
+                  setDirty((prev) => ({ ...prev, relativePath: true }));
+                }}
                 placeholder="например: kpd-frontend"
                 className="mt-1 font-mono"
               />
@@ -184,7 +235,10 @@ export function RepoCardModal({
                 <Textarea
                   id="repo-short-description-editable"
                   value={shortDescription}
-                  onChange={(e) => setShortDescription(e.target.value)}
+                  onChange={(e) => {
+                    setShortDescription(e.target.value);
+                    setDirty((prev) => ({ ...prev, shortDescription: true }));
+                  }}
                   rows={2}
                 />
               </div>
@@ -193,7 +247,10 @@ export function RepoCardModal({
                 <Textarea
                   id="repo-description-editable"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setDirty((prev) => ({ ...prev, description: true }));
+                  }}
                   rows={6}
                 />
               </div>
@@ -226,7 +283,7 @@ export function RepoCardModal({
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSave}
-                disabled={!repo || isSaving || isRemoving}
+                disabled={!canSave}
               >
                 {isSaving ? (
                   <>
