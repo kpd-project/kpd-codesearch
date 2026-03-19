@@ -30,7 +30,6 @@ from web.websocket import ws_manager
 from rag.indexer import index_repository
 from rag.retriever import search_code
 from rag.generator import generate_response
-from rag.qdrant_client import set_collection_properties
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +144,7 @@ async def set_repo_enabled(name: str, body: RepoEnabledUpdate):
     if not state.repo_exists(name):
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    set_collection_properties(name, {"enabled": body.enabled})
+    repo = state.set_repo_enabled(name, body.enabled)
 
     await ws_manager.broadcast({
         "type": "repo_toggled",
@@ -153,7 +152,7 @@ async def set_repo_enabled(name: str, body: RepoEnabledUpdate):
         "enabled": body.enabled,
     })
 
-    return {"status": "ok", "enabled": body.enabled}
+    return {"status": "ok", "enabled": repo["enabled"]}
 
 
 @router.post("/api/repos/{name}/reindex")
@@ -264,7 +263,7 @@ async def describe_repo(name: str):
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="LLM request timed out")
 
-    set_collection_properties(name, {"description": description})
+    state.set_repo_description(name, description)
 
     await ws_manager.broadcast({
         "type": "repo_described",
@@ -273,6 +272,35 @@ async def describe_repo(name: str):
     })
 
     return {"description": description}
+
+
+@router.get("/api/config/system")
+async def get_system_config():
+    """Системные настройки (только чтение)."""
+    return {
+        "qdrant": {
+            "url": config.QDRANT_URL,
+            "api_key_masked": "•" * 8 if config.QDRANT_API_KEY else "",
+            "has_api_key": bool(config.QDRANT_API_KEY),
+        },
+        "embeddings": {
+            "model": config.EMBEDDINGS_MODEL,
+            "dimension": config.EMBEDDINGS_DIMENSION,
+        },
+        "repos": {
+            "base_path": str(config.REPOS_BASE_PATH),
+        },
+        "telegram": {
+            "bot_token_masked": "•" * 8 if config.TELEGRAM_BOT_TOKEN else "",
+            "has_bot_token": bool(config.TELEGRAM_BOT_TOKEN),
+            "whitelist_users": list(config.TELEGRAM_WHITELIST_USERS),
+        },
+        "openrouter": {
+            "url": config.OPENROUTER_API_URL,
+            "api_key_masked": "•" * 8 if config.OPENROUTER_API_KEY else "",
+            "has_api_key": bool(config.OPENROUTER_API_KEY),
+        },
+    }
 
 
 @router.get("/api/config")

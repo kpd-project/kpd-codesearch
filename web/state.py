@@ -1,6 +1,8 @@
-"""Global application state. Persistent repo metadata lives in Qdrant collection properties."""
+"""Global application state. Persistent repo metadata lives in local JSON file + memory."""
+import json as _json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 import logging
 
 import config
@@ -10,10 +12,12 @@ from rag.qdrant_client import (
     collection_exists,
     create_collection,
     get_collection_properties,
-    set_collection_properties,
 )
+from rag.repos_metadata import get_metadata, set_metadata, remove_metadata
 
 logger = logging.getLogger(__name__)
+
+_METADATA_FILE = Path(__file__).parent.parent / "repos_metadata.json"
 
 
 @dataclass
@@ -39,12 +43,10 @@ class State:
         self.qdrant_client: QdrantClient | None = None
         self.start_time = datetime.now()
         self.indexing_progress: dict[str, int] = {}
-        # ephemeral: "idle" | "indexing" | "error" — только для текущей сессии
         self._repo_status: dict[str, str] = {}
 
     def get_qdrant(self) -> QdrantClient:
         if self.qdrant_client is None:
-            # Единый фабричный клиент из rag/ — обход SSL-бага на Windows
             self.qdrant_client = get_qdrant_client()
         return self.qdrant_client
 
@@ -58,28 +60,26 @@ class State:
             self.qdrant_status = "error"
             return False
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _build_repo(self, name: str, props: dict, chunks: int) -> dict:
-        """Собирает dict репозитория из Qdrant-properties + эфемерного статуса."""
+    def _build_repo(self, name: str, chunks: int, metadata: dict = None, props: dict = None) -> dict:
+        """Собирает dict репозитория из metadata + эфемерного статуса + collection properties."""
+        if metadata is None:
+            metadata = get_metadata(name)
+        if props is None:
+            props = get_collection_properties(name)
         return {
             "name": name,
-            "path": props.get("path") or str(config.REPOS_BASE_PATH / name),
-            "enabled": props.get("enabled", True),
+            "path": metadata.get("path") or str(config.REPOS_BASE_PATH / name),
+            "enabled": metadata.get("enabled", True),
             "chunks": chunks,
-            "last_indexed": props.get("last_indexed"),
+            "last_indexed": metadata.get("last_indexed"),
             "status": self._repo_status.get(name, "idle"),
-            "description": props.get("description"),
+            "description": metadata.get("description"),
+            "embedder_model": props.get("embedder_model"),
+            "embedder_dimension": props.get("embedder_dimension"),
         }
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def list_repos(self) -> list[dict]:
-        """Все репозитории: коллекции Qdrant + вайтлист без коллекции."""
+        """Все репозитории: коллекции Qdrant."""
         try:
             client = self.get_qdrant()
             collections = client.get_collections().collections
@@ -92,12 +92,8 @@ class State:
                     chunks = info.points_count or 0
                 except Exception:
                     chunks = 0
-                result[name] = self._build_repo(name, get_collection_properties(name), chunks)
-
-            # Вайтлист-репо, которых ещё нет в Qdrant
-            for repo_name in config.REPOS_WHITELIST:
-                if repo_name not in result:
-                    result[repo_name] = self._build_repo(repo_name, {}, 0)
+                metadata = get_metadata(name)
+                result[name] = self._build_repo(name, chunks, metadata)
 
             return list(result.values())
         except Exception as e:
@@ -105,35 +101,54 @@ class State:
             return []
 
     def get_repo(self, name: str) -> dict | None:
-        """Один репо из Qdrant или None если не существует и не в вайтлисте."""
+        """Один репо из Qdrant или None если не существует."""
         in_qdrant = collection_exists(name)
-        if not in_qdrant and name not in config.REPOS_WHITELIST:
+        if not in_qdrant:
             return None
         chunks = 0
-        props: dict = {}
         if in_qdrant:
             try:
                 info = self.get_qdrant().get_collection(name)
                 chunks = info.points_count or 0
             except Exception:
                 pass
-            props = get_collection_properties(name)
-        return self._build_repo(name, props, chunks)
+        metadata = get_metadata(name)
+        return self._build_repo(name, chunks, metadata)
 
     def repo_exists(self, name: str) -> bool:
-        """Репо известен: есть коллекция в Qdrant или в вайтлисте."""
-        return collection_exists(name) or name in config.REPOS_WHITELIST
+        """Репо известен: есть коллекция в Qdrant."""
+        return collection_exists(name)
 
     def add_repo(self, name: str, path: str) -> dict:
-        """Регистрирует репо: создаёт пустую коллекцию и сохраняет path в properties."""
-        create_collection(name)  # no-op если уже есть
-        set_collection_properties(name, {"path": path, "enabled": True})
-        return self._build_repo(name, {"path": path, "enabled": True}, 0)
+        """Регистрирует репо: создаёт пустую коллекцию и сохраняет metadata."""
+        create_collection(name)
+        set_metadata(name, {"path": path, "enabled": True})
+        return self._build_repo(name, 0, get_metadata(name))
+
+    def set_repo_enabled(self, name: str, enabled: bool) -> dict:
+        """Update repo enabled state."""
+        metadata = get_metadata(name)
+        metadata["enabled"] = enabled
+        set_metadata(name, metadata)
+        chunks = 0
+        try:
+            info = self.get_qdrant().get_collection(name)
+            chunks = info.points_count or 0
+        except Exception:
+            pass
+        return self._build_repo(name, chunks, metadata)
+
+    def set_repo_description(self, name: str, description: str):
+        """Update repo description."""
+        metadata = get_metadata(name)
+        metadata["description"] = description
+        set_metadata(name, metadata)
 
     def remove_repo(self, name: str) -> bool:
         """Очищает эфемерный статус. Коллекцию удаляет вызывающий код."""
         self._repo_status.pop(name, None)
         self.indexing_progress.pop(name, None)
+        remove_metadata(name)
         return True
 
     def set_status(self, name: str, status: str):
@@ -146,7 +161,9 @@ class State:
     def complete_indexing(self, repo: str, chunks: int):
         self.indexing_progress.pop(repo, None)
         self._repo_status.pop(repo, None)
-        set_collection_properties(repo, {"last_indexed": datetime.now().isoformat()})
+        metadata = get_metadata(repo)
+        metadata["last_indexed"] = datetime.now().isoformat()
+        set_metadata(repo, metadata)
 
     def error_indexing(self, repo: str):
         self.indexing_progress.pop(repo, None)
