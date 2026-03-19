@@ -205,37 +205,44 @@ export function RepoCardModal({
                 {JSON.stringify(repo, null, 2)}
               </pre>
             </div>
+          </div>
+        )}
 
-            <div className="flex items-center gap-2 pt-2 flex-row">
+        <DialogFooter>
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={handleRemove}
-                disabled={isRemoving || isSaving}
+                disabled={!repo || isRemoving || isSaving}
                 title="Удалить"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Удалить
               </Button>
             </div>
-          </div>
-        )}
 
-        <DialogFooter>
-          <Button onClick={handleSave} disabled={!repo || isSaving || isRemoving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Сохранение…
-              </>
-            ) : (
-              "Сохранить"
-            )}
-          </Button>
-          <DialogClose
-            render={<Button variant="outline">Закрыть</Button>}
-            disabled={isSaving}
-          />
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={!repo || isSaving || isRemoving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Сохранение…
+                  </>
+                ) : (
+                  "Сохранить"
+                )}
+              </Button>
+              <DialogClose
+                render={<Button variant="outline">Закрыть</Button>}
+                disabled={isSaving}
+              />
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
