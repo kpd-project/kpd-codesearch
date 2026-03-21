@@ -298,12 +298,22 @@ async def generate_response(
                         pass
 
 
-def _make_session_data(tool_calls_log: list[dict], iterations: int, usage: dict | None = None) -> dict:
-    data = {
-        "model": config.OPENROUTER_MODEL,
+def _make_session_data(
+    tool_calls_log: list[dict],
+    iterations: int,
+    usage: dict | None = None,
+    *,
+    simple: bool = False,
+) -> dict:
+    """Метаданные для лога: в умном режиме — две модели (цикл агента + финальный проход);
+    в простом — только model_primary, model_secondary не пишем."""
+    data: dict = {
+        "model_primary": config.OPENROUTER_MODEL,
         "iterations": iterations,
         "tool_calls": tool_calls_log,
     }
+    if not simple:
+        data["model_secondary"] = config.OPENROUTER_MODEL
     if usage:
         data["usage"] = usage
     return data

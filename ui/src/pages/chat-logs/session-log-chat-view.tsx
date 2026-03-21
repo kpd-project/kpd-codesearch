@@ -91,7 +91,9 @@ export function SessionLogChatView({ payload, className }: SessionLogChatViewPro
     typeof durationRaw === "number" && Number.isFinite(durationRaw)
       ? durationRaw
       : undefined;
-  const model = getString(payload, "model");
+  const modelPrimary =
+    getString(payload, "model_primary") ?? getString(payload, "model");
+  const modelSecondary = getString(payload, "model_secondary");
   const iterationsRaw = payload.iterations;
   const iterations =
     typeof iterationsRaw === "number" && Number.isFinite(iterationsRaw)
@@ -146,7 +148,12 @@ export function SessionLogChatView({ payload, className }: SessionLogChatViewPro
 
           <ChatMarkdownBody content={answerText} variant="assistant" />
 
-          {(usage != null || durationS != null || toolCallsCount > 0 || model != null || iterations != null) && (
+          {(usage != null ||
+            durationS != null ||
+            toolCallsCount > 0 ||
+            modelPrimary != null ||
+            modelSecondary != null ||
+            iterations != null) && (
             <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60 space-y-1.5">
               {usage != null ? (
                 <p>
@@ -166,9 +173,16 @@ export function SessionLogChatView({ payload, className }: SessionLogChatViewPro
                 <span className="text-foreground/80">Вызовы инструментов:</span>{" "}
                 {toolCallsCount}
               </p>
-              {model != null ? (
+              {modelPrimary != null ? (
                 <p>
-                  <span className="text-foreground/80">Модель:</span> {model}
+                  <span className="text-foreground/80">Модель 1:</span>{" "}
+                  {modelPrimary}
+                </p>
+              ) : null}
+              {modelSecondary != null ? (
+                <p>
+                  <span className="text-foreground/80">Модель 2:</span>{" "}
+                  {modelSecondary}
                 </p>
               ) : null}
               {iterations != null ? (
