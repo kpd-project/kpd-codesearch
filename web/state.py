@@ -78,6 +78,8 @@ class RuntimeSettings:
     temperature: float = 0.1
     top_k: int = 10
     max_chunks: int = 10
+    # simple — один поиск + ответ по контексту; agent — цикл с инструментами
+    rag_mode: str = config.RAG_RUNTIME_MODE
 
 
 class State:

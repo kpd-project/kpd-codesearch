@@ -34,6 +34,8 @@ interface Settings {
   temperature: number;
   top_k: number;
   max_chunks: number;
+  /** Режим RAG для веба и Telegram (runtime). */
+  rag_mode?: "simple" | "agent";
 }
 
 type WsMessage = Record<string, unknown> & { _seq?: number };
@@ -174,6 +176,9 @@ function useStatusState() {
           delete n[repoName];
           return n;
         });
+        void fetchStatus();
+      }
+      if (type === "settings_updated") {
         void fetchStatus();
       }
     }

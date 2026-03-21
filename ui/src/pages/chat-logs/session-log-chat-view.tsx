@@ -94,6 +94,7 @@ export function SessionLogChatView({ payload, className }: SessionLogChatViewPro
   const modelPrimary =
     getString(payload, "model_primary") ?? getString(payload, "model");
   const modelSecondary = getString(payload, "model_secondary");
+  const ragMode = getString(payload, "rag_mode");
   const iterationsRaw = payload.iterations;
   const iterations =
     typeof iterationsRaw === "number" && Number.isFinite(iterationsRaw)
@@ -153,8 +154,19 @@ export function SessionLogChatView({ payload, className }: SessionLogChatViewPro
             toolCallsCount > 0 ||
             modelPrimary != null ||
             modelSecondary != null ||
-            iterations != null) && (
+            iterations != null ||
+            ragMode != null) && (
             <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60 space-y-1.5">
+              {ragMode != null ? (
+                <p>
+                  <span className="text-foreground/80">Режим:</span>{" "}
+                  {ragMode === "simple"
+                    ? "простой RAG"
+                    : ragMode === "agent"
+                      ? "агент"
+                      : ragMode}
+                </p>
+              ) : null}
               {usage != null ? (
                 <p>
                   <span className="text-foreground/80">Токены:</span> всего{" "}

@@ -9,6 +9,8 @@ import config
 
 logger = logging.getLogger(__name__)
 import rag
+from rag.validation import validate_user_question
+from web.state import state
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
@@ -551,6 +553,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("handle_message: skip empty/question")
         return
 
+    qerr = validate_user_question(question)
+    if qerr:
+        await msg.reply_text(qerr)
+        return
+
     status_queue = queue.Queue()
     steps: list[str] = ["🤔 Думаю..."]
 
@@ -565,20 +572,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = None
     session_data = {}
     loop = asyncio.get_event_loop()
+    use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+    rag_mode_for_log = (
+        "two_agent"
+        if use_two_agent
+        else ("simple" if config.RAG_RUNTIME_MODE == "simple" else "agent")
+    )
 
     try:
-        use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
-        if use_two_agent:
-            from rag.agent.pipeline import generate_answer_two_agent
-            future = loop.run_in_executor(
-                None,
-                lambda: generate_answer_two_agent(question, history=history, on_status=on_qdrant_status),
+        def run_rag():
+            if use_two_agent:
+                from rag.agent.pipeline import generate_answer_two_agent
+
+                return generate_answer_two_agent(
+                    question, history=history, on_status=on_qdrant_status
+                )
+            if config.RAG_RUNTIME_MODE == "simple":
+                return rag.generate_simple_answer(
+                    question,
+                    repo_name=None,
+                    top_k=config.RAG_SEARCH_TOP_K,
+                    max_chunks=10,
+                    model=config.OPENROUTER_MODEL,
+                    temperature=config.RAG_AGENT_TEMPERATURE,
+                    on_status=on_qdrant_status,
+                )
+            return rag.generate_answer(
+                question, history=history, on_status=on_qdrant_status
             )
-        else:
-            future = loop.run_in_executor(
-                None,
-                lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
-            )
+
+        future = loop.run_in_executor(None, run_rag)
         while not future.done():
             try:
                 line = status_queue.get_nowait()
@@ -618,6 +641,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "duration_s": round(time.monotonic() - t0, 2),
             "steps": steps,
             **session_data,
+            "rag_mode": rag_mode_for_log,
         })
 
 

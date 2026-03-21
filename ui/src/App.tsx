@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Chat } from "@/components/chat";
 import { Repositories } from "@/components/repositories";
@@ -8,12 +8,81 @@ import { Button } from "@/components/ui/button";
 import { Circle, Settings, HelpCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { apiUrl } from "@/lib/api-url";
 
-export default function App() {
+type RagQueryMode = "simple" | "agent";
+
+function RagModeToolbar({
+  ragMode,
+  onRagModeChange,
+  disabled,
+}: {
+  ragMode: RagQueryMode;
+  onRagModeChange: (m: RagQueryMode) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      className="inline-flex items-center rounded-md border border-border bg-muted/50 p-0.5 gap-0.5 shrink-0"
+      title="Простой: один поиск по векторам и ответ. Агент: цикл с инструментами и финальный ответ."
+    >
+      <Button
+        type="button"
+        size="sm"
+        variant={ragMode === "simple" ? "default" : "ghost"}
+        className="h-7 px-2.5 text-xs"
+        disabled={disabled}
+        onClick={() => onRagModeChange("simple")}
+      >
+        Простой
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={ragMode === "agent" ? "default" : "ghost"}
+        className="h-7 px-2.5 text-xs"
+        disabled={disabled}
+        onClick={() => onRagModeChange("agent")}
+      >
+        Агент
+      </Button>
+    </div>
+  );
+}
+
+function AppShell() {
   const [activeTab, setActiveTab] = useState("chat");
+  const [ragSaving, setRagSaving] = useState(false);
   const { status, loading, refetch, wsConnected } = useStatus();
 
   const isConnected = wsConnected && status?.qdrant.connected;
+
+  const ragMode: RagQueryMode =
+    status?.settings?.rag_mode === "simple" ||
+    status?.settings?.rag_mode === "agent"
+      ? status.settings.rag_mode
+      : "agent";
+
+  const setRagMode = useCallback(
+    async (m: RagQueryMode) => {
+      if (m === ragMode) return;
+      setRagSaving(true);
+      try {
+        const res = await fetch(apiUrl("/api/config/runtime"), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rag_mode: m }),
+        });
+        if (!res.ok) throw new Error("runtime");
+        await refetch();
+      } catch {
+        /* ignore */
+      } finally {
+        setRagSaving(false);
+      }
+    },
+    [ragMode, refetch]
+  );
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col bg-background text-foreground">
@@ -34,6 +103,15 @@ export default function App() {
             <TabsTrigger value="chat" className="rounded-md px-3 py-1.5 data-[state=active]:bg-muted">Чат</TabsTrigger>
             <TabsTrigger value="repositories" className="rounded-md px-3 py-1.5 data-[state=active]:bg-muted">Репозитории</TabsTrigger>
           </TabsList>
+          {activeTab === "chat" ? (
+            <div className="flex items-center ml-3 pl-3 border-l border-border min-h-9">
+              <RagModeToolbar
+                ragMode={ragMode}
+                onRagModeChange={setRagMode}
+                disabled={loading || ragSaving}
+              />
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Link to="/settings">
@@ -90,4 +168,8 @@ export default function App() {
       </footer>
     </Tabs>
   );
+}
+
+export default function App() {
+  return <AppShell />;
 }
