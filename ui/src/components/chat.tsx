@@ -11,10 +11,12 @@ import { cn } from "@/lib/utils";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  /** Ход агента (как в Telegram) до появления текста ответа */
+  status?: string;
 }
 
 /** Один локальный чат; версия ключа — при смене формата данных. */
-const CHAT_STORAGE_KEY = "kpd-codesearch-chat-messages-v1";
+const CHAT_STORAGE_KEY = "kpd-codesearch-chat-messages-v2";
 
 function loadMessagesFromStorage(): Message[] {
   if (typeof window === "undefined") return [];
@@ -29,7 +31,9 @@ function loadMessagesFromStorage(): Message[] {
         typeof m === "object" &&
         ((m as Message).role === "user" ||
           (m as Message).role === "assistant") &&
-        typeof (m as Message).content === "string"
+        typeof (m as Message).content === "string" &&
+        ((m as Message).status === undefined ||
+          typeof (m as Message).status === "string")
     );
   } catch {
     return [];
@@ -109,15 +113,36 @@ export function Chat({ className }: ChatProps) {
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
 
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "", status: "🤔 Думаю..." },
+      ]);
 
       const appendToAssistant = (delta: string) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === "assistant") {
+            const nextContent = last.content + delta;
             return [
               ...prev.slice(0, -1),
-              { ...last, content: last.content + delta },
+              {
+                ...last,
+                content: nextContent,
+                status: last.content === "" ? undefined : last.status,
+              },
+            ];
+          }
+          return prev;
+        });
+      };
+
+      const setAssistantStatus = (text: string) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, status: text },
             ];
           }
           return prev;
@@ -128,11 +153,17 @@ export function Chat({ className }: ChatProps) {
         if (payload === "[DONE]") return;
         try {
           const parsed = JSON.parse(payload) as {
+            type?: string;
+            text?: string;
             content?: string;
             error?: string;
           };
           if (parsed.error) {
             appendToAssistant(`\n\nОшибка: ${parsed.error}`);
+            return;
+          }
+          if (parsed.type === "status" && parsed.text != null) {
+            setAssistantStatus(parsed.text);
             return;
           }
           if (parsed.content != null && parsed.content !== "") {
@@ -162,10 +193,25 @@ export function Chat({ className }: ChatProps) {
       }
     } catch (error) {
       console.error("Query error:", error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Ошибка: не удалось получить ответ" },
-      ]);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              content: last.content
+                ? `${last.content}\n\nОшибка: не удалось получить ответ`
+                : "Ошибка: не удалось получить ответ",
+              status: undefined,
+            },
+          ];
+        }
+        return [
+          ...prev,
+          { role: "assistant", content: "Ошибка: не удалось получить ответ" },
+        ];
+      });
     } finally {
       setIsStreaming(false);
     }
@@ -230,6 +276,14 @@ export function Chat({ className }: ChatProps) {
                     </>
                   )}
                 </div>
+                {msg.role === "assistant" && msg.status && (
+                  <div className="text-xs text-muted-foreground mb-2 flex items-start gap-2 border-b border-border/60 pb-2">
+                    {!msg.status.startsWith("✅") ? (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 mt-0.5 animate-spin" />
+                    ) : null}
+                    <span className="leading-snug flex-1 min-w-0">{msg.status}</span>
+                  </div>
+                )}
                 <div
                   className={cn(
                     "prose prose-lg prose-neutral max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
@@ -249,15 +303,6 @@ export function Chat({ className }: ChatProps) {
               </div>
             </div>
           ))}
-
-          {isStreaming && (
-            <div className="flex justify-start">
-              <div className="rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-none bg-muted text-foreground p-4 w-fit min-w-[min(100%,12rem)] max-w-full flex items-center gap-2">
-                <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              </div>
-            </div>
-          )}
 
           <div ref={scrollRef} />
         </div>

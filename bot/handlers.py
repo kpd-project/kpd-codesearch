@@ -552,9 +552,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     status_queue = queue.Queue()
+    steps: list[str] = ["🤔 Думаю..."]
 
     def on_qdrant_status(text: str):
         status_queue.put(text)
+        steps.append(text)
 
     status_msg = await msg.reply_text("🤔 Думаю...")
 
@@ -591,6 +593,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (pt or 0) > 0 or (ct or 0) > 0:
             status_text = f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
         await _safe_edit_text(status_msg, status_text)
+        steps.append(status_text)
         formatted = _telegram_html(answer)
         try:
             await msg.reply_text(formatted, parse_mode=ParseMode.HTML)
@@ -607,11 +610,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         save_session({
             "ts": datetime.now(timezone.utc).isoformat(),
+            "source": "telegram",
             "user_id": user.id if user else None,
             "username": user.username if user else None,
             "question": question,
             "answer": answer,
             "duration_s": round(time.monotonic() - t0, 2),
+            "steps": steps,
             **session_data,
         })
 
