@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useStatus } from "@/hooks/use-api";
 import { useRepos } from "@/hooks/use-repos";
+import type { RepoStatus } from "@/types/repo";
 import { useRepoDescribe } from "@/hooks/use-repo-describe";
 import { useSystemConfig } from "@/hooks/use-system-config";
 import { StatsGrid } from "@/components/stats/stats-grid";
@@ -11,8 +11,13 @@ import {
   AddRepoDialog,
 } from "@/components/repo";
 
-export function Repositories() {
-  const { status, loading, refetch } = useStatus();
+interface RepositoriesProps {
+  status: RepoStatus | null;
+  loading: boolean;
+  refetch: () => Promise<void>;
+}
+
+export function Repositories({ status, loading, refetch }: RepositoriesProps) {
   const { config } = useSystemConfig();
   const { addRepo, removeRepo, reindexRepo, toggleRepo, updateRepoCard } =
     useRepos(refetch);

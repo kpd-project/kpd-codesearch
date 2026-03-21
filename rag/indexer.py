@@ -4,7 +4,7 @@ from qdrant_client.models import PointStruct
 import uuid
 import time
 import json
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 import config
 from .chunker import chunk_file
@@ -49,9 +49,7 @@ async def _process_file(
     progress_lock: asyncio.Lock,
     indexed_paths: set,
     state_path: Path,
-    progress_callback: Optional[Callable],
-    current_file_idx: int,
-    total_files: int,
+    emit_progress: Callable[[str, int, int, bool], Awaitable[None]],
 ) -> tuple[int, int]:
     rel_path = file_path.relative_to(repo_path).as_posix()
 
@@ -59,8 +57,7 @@ async def _process_file(
         chunks = chunk_file(file_path, repo_name, repo_path)
 
     if not chunks:
-        if progress_callback:
-            progress_callback(current_file_idx, total_files, rel_path, 0, 0, skipped=True)
+        await emit_progress(rel_path, 0, 0, True)
         return (0, 0)
 
     texts = [f"{c['metadata']['repo']}/{c['metadata']['path']}\n{c['content']}" for c in chunks]
@@ -100,8 +97,7 @@ async def _process_file(
         indexed_paths.add(rel_path)
         _save_indexed_paths(repo_name, indexed_paths)
 
-    if progress_callback:
-        progress_callback(current_file_idx, total_files, rel_path, len(chunks), len(vectors), skipped=False)
+    await emit_progress(rel_path, len(chunks), len(vectors), False)
 
     return (len(chunks), len(vectors))
 
@@ -142,6 +138,8 @@ async def index_repo_async(
 
     file_semaphore = asyncio.Semaphore(config.EMBED_MAX_FILES_CONCURRENT)
     progress_lock = asyncio.Lock()
+    done_lock = asyncio.Lock()
+    done_count = 0
 
     total_chunks = 0
     total_vectors = 0
@@ -154,12 +152,19 @@ async def index_repo_async(
         if on_progress:
             on_progress(idx, total, path, chunks, vectors, skipped)
 
+    async def emit_progress(path: str, chunks: int, vectors: int, skipped: bool):
+        nonlocal done_count
+        async with done_lock:
+            done_count += 1
+            seq = done_count
+        progress_callback(seq, total_files, path, chunks, vectors, skipped)
+
     tasks = []
     for fi, file_path in enumerate(file_list):
         rel_path = file_path.relative_to(repo_path).as_posix()
 
         if rel_path in indexed_paths:
-            progress_callback(fi + 1, total_files, rel_path, 0, 0, skipped=True)
+            await emit_progress(rel_path, 0, 0, True)
             continue
 
         task = asyncio.create_task(
@@ -173,9 +178,7 @@ async def index_repo_async(
                 progress_lock=progress_lock,
                 indexed_paths=indexed_paths,
                 state_path=state_path,
-                progress_callback=progress_callback,
-                current_file_idx=fi + 1,
-                total_files=total_files,
+                emit_progress=emit_progress,
             )
         )
         tasks.append(task)

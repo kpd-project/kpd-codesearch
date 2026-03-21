@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import logging
 import httpx
+import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -211,14 +212,39 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
         try:
             if collection_exists(name):
                 delete_collection(name)
+            def on_file_progress(
+                idx: int,
+                total: int,
+                rel_path: str,
+                chunks: int,
+                vectors: int,
+                skipped: bool,
+            ):
+                payload = {
+                    "current": idx,
+                    "total": total,
+                    "path": rel_path,
+                    "chunks": chunks,
+                    "vectors": vectors,
+                    "skipped": skipped,
+                }
+                state.update_indexing_progress(name, payload)
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    return
+                loop.create_task(
+                    ws_manager.broadcast({
+                        "type": "index_progress",
+                        "repo": name,
+                        "progress": payload,
+                    })
+                )
+
             total_chunks = await index_repository(
                 repo_path=repo_path,
                 collection_name=name,
-                progress_callback=lambda p: ws_manager.broadcast({
-                    "type": "index_progress",
-                    "repo": name,
-                    "progress": p,
-                })
+                progress_callback=on_file_progress,
             )
             state.complete_indexing(name, total_chunks, indexed_path=repo_path)
             await ws_manager.broadcast({
