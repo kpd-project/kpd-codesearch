@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import SettingsPage from './pages/settings/settings-page.tsx'
+import ChatLogsPage from './pages/chat-logs/chat-logs-page.tsx'
 import { StatusProvider } from '@/hooks/use-api'
 import { ServicesWaitingGate } from '@/components/services-waiting-overlay'
 
@@ -14,6 +15,7 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/chat-logs" element={<ChatLogsPage />} />
         </Routes>
         <ServicesWaitingGate />
       </StatusProvider>

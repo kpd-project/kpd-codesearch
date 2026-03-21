@@ -63,7 +63,19 @@ export default function App() {
 
       {/* Footer */}
       <footer className="h-8 border-t border-border flex items-center justify-between px-4 text-xs text-muted-foreground bg-background shrink-0">
-        <span>Версия 2.0</span>
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="shrink-0">Версия 2.0</span>
+          <span className="text-border shrink-0" aria-hidden>
+            ·
+          </span>
+          <Link
+            to="/chat-logs"
+            className="truncate hover:text-foreground underline-offset-2 hover:underline"
+            title="Локальные логи сессий (IndexedDB)"
+          >
+            Логи чатов
+          </Link>
+        </span>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
             <Circle className={`w-1.5 h-1.5 ${wsConnected ? "fill-green-500 text-green-500" : "fill-red-500 text-red-500"}`} />
