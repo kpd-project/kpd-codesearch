@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Переключение темы через class на <html> (useTheme), не через prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
 @plugin "@tailwindcss/typography";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -125,13 +127,14 @@
     @apply font-sans;
   }
 
-  /* Тонкий исчезающий скролл для ScrollArea */
+  /* Тонкий исчезающий скролл для ScrollArea (виден при наведении на область или на трек, при прокрутке) */
   [data-slot="scroll-area-scrollbar"] {
     opacity: 0;
     transition: opacity 160ms ease;
     pointer-events: auto;
   }
 
+  [data-slot="scroll-area"]:hover [data-slot="scroll-area-scrollbar"],
   [data-slot="scroll-area-scrollbar"][data-hovering],
   [data-slot="scroll-area-scrollbar"][data-scrolling] {
     opacity: 1;
@@ -141,20 +144,21 @@
   [data-slot="scroll-area-thumb"] {
     background: linear-gradient(
       to bottom,
-      rgba(148, 163, 184, 0.85),
-      rgba(148, 163, 184, 0.35)
+      color-mix(in oklch, var(--muted-foreground) 55%, transparent),
+      color-mix(in oklch, var(--muted-foreground) 22%, transparent)
     );
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 8%, transparent);
     transition: background 160ms ease, box-shadow 160ms ease;
   }
 
+  [data-slot="scroll-area"]:hover [data-slot="scroll-area-scrollbar"] [data-slot="scroll-area-thumb"],
   [data-slot="scroll-area-scrollbar"][data-hovering] [data-slot="scroll-area-thumb"],
   [data-slot="scroll-area-scrollbar"][data-scrolling] [data-slot="scroll-area-thumb"] {
     background: linear-gradient(
       to bottom,
-      rgba(148, 163, 184, 0.95),
-      rgba(148, 163, 184, 0.45)
+      color-mix(in oklch, var(--muted-foreground) 72%, transparent),
+      color-mix(in oklch, var(--muted-foreground) 38%, transparent)
     );
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--foreground) 12%, transparent);
   }
 }
