@@ -10,17 +10,51 @@ interface Message {
   content: string;
 }
 
+/** Один локальный чат; версия ключа — при смене формата данных. */
+const CHAT_STORAGE_KEY = "kpd-codesearch-chat-messages-v1";
+
+function loadMessagesFromStorage(): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is Message =>
+        m != null &&
+        typeof m === "object" &&
+        ((m as Message).role === "user" || (m as Message).role === "assistant") &&
+        typeof (m as Message).content === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveMessagesToStorage(messages: Message[]) {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+  } catch {
+    // квота / приватный режим
+  }
+}
+
 interface ChatProps {
   className?: string;
 }
 
 export function Chat({ className }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(loadMessagesFromStorage);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAutoScrollAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    saveMessagesToStorage(messages);
+  }, [messages]);
 
   useEffect(() => {
     const now = Date.now();
@@ -175,7 +209,14 @@ export function Chat({ className }: ChatProps) {
               <Send className="w-4 h-4" />
             )}
           </Button>
-          <Button type="button" variant="ghost" onClick={clearChat}>
+          <Button
+            type="button"
+            variant="ghost"
+            title="Очистить переписку"
+            aria-label="Очистить переписку"
+            disabled={messages.length === 0}
+            onClick={clearChat}
+          >
             <Trash2 className="w-4 h-4" />
           </Button>
         </form>

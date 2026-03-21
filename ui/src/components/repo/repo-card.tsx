@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Play, RefreshCw } from "lucide-react";
@@ -35,11 +36,21 @@ export function RepoCard({
     : "Включить репозиторий";
 
   const title = repo.display_name?.trim() ? repo.display_name.trim() : null;
+  const inactive = !repo.enabled;
+  const titleClass = cn(
+    "uppercase text-lg font-semibold",
+    inactive ? "text-muted-foreground" : "text-foreground"
+  );
 
   return (
     <Card
       onClick={() => onClick(repo.name)}
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      className={cn(
+        "cursor-pointer transition-colors",
+        inactive
+          ? "bg-muted/40 hover:bg-muted/55 ring-foreground/5"
+          : "hover:bg-muted/50"
+      )}
       role="button"
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -49,25 +60,38 @@ export function RepoCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {title ? (
-                <span className="font-semibold uppercase text-lg text-foreground">
-                  {title}
-                </span>
+                <span className={titleClass}>{title}</span>
               ) : (
-                <span className="font-semibold uppercase text-lg text-foreground">
-                  Идентификатор: {repo.name}
-                </span>
+                <span className={titleClass}>Идентификатор: {repo.name}</span>
               )}
               {repo.status === "indexing" && (
-                <Badge variant="secondary" className="text-yellow-500">
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    inactive
+                      ? "border-border bg-muted/50 text-muted-foreground"
+                      : "text-yellow-500"
+                  )}
+                >
                   Индексация…
                 </Badge>
               )}
               {repo.status === "error" && (
-                <Badge variant="destructive">Ошибка</Badge>
+                <Badge
+                  variant="destructive"
+                  className={cn(inactive && "opacity-70")}
+                >
+                  Ошибка
+                </Badge>
               )}
             </div>
 
-            <div className="text-xs text-muted-foreground mb-2">
+            <div
+              className={cn(
+                "text-xs mb-2",
+                inactive ? "text-muted-foreground/70" : "text-muted-foreground"
+              )}
+            >
               <span>{repo.chunks.toLocaleString()} векторов</span>
               <span className="mx-1">·</span>
               <span>
@@ -82,11 +106,21 @@ export function RepoCard({
             </div>
 
             {repo.description ? (
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p
+                className={cn(
+                  "text-sm leading-relaxed",
+                  inactive ? "text-muted-foreground/80" : "text-muted-foreground"
+                )}
+              >
                 {repo.description}
               </p>
             ) : (
-              <p className="text-sm text-muted-foreground/50 italic">
+              <p
+                className={cn(
+                  "text-sm italic",
+                  inactive ? "text-muted-foreground/40" : "text-muted-foreground/50"
+                )}
+              >
                 Нет описания
               </p>
             )}
