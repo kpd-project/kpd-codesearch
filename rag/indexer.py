@@ -196,6 +196,14 @@ async def index_repo_async(
     elapsed = time.perf_counter() - t0
     log(f"  done   {total_chunks} chunks, {total_vectors} vectors  ({elapsed:.1f}s total)\n")
 
+    set_collection_properties(
+        repo_name,
+        {
+            "embedder_model": config.EMBEDDINGS_MODEL,
+            "embedder_dimension": config.EMBEDDINGS_DIMENSION,
+        },
+    )
+
     return {
         "repo": repo_name,
         "chunks": total_chunks,

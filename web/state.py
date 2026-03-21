@@ -31,6 +31,28 @@ def _normalize_relative_path(value: str | None) -> str | None:
     return normalized.lstrip("/")
 
 
+def _embedder_model_from_sources(props: dict, metadata: dict) -> str | None:
+    for v in (props.get("embedder_model"), metadata.get("embedder_model")):
+        if v is None or v == "":
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return None
+
+
+def _embedder_dimension_from_sources(props: dict, metadata: dict) -> int | None:
+    for source in (props, metadata):
+        v = source.get("embedder_dimension")
+        if v is None or v == "":
+            continue
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _resolve_repo_abs_path(repo_name: str, metadata: dict) -> str:
     """Абсолютный путь, который будет использован при индексации прямо сейчас."""
     rel = _normalize_relative_path(metadata.get("relative_path"))
@@ -113,8 +135,8 @@ class State:
             "status": self._repo_status.get(name, "idle"),
             "description": props.get("description") or metadata.get("description"),
             "short_description": props.get("short_description"),
-            "embedder_model": props.get("embedder_model"),
-            "embedder_dimension": props.get("embedder_dimension"),
+            "embedder_model": _embedder_model_from_sources(props, metadata),
+            "embedder_dimension": _embedder_dimension_from_sources(props, metadata),
         }
 
     def list_repos(self) -> list[dict]:
@@ -288,6 +310,13 @@ class State:
         if indexed_path:
             metadata["indexed_path"] = indexed_path
         set_metadata(repo, metadata)
+        set_collection_properties(
+            repo,
+            {
+                "embedder_model": config.EMBEDDINGS_MODEL,
+                "embedder_dimension": config.EMBEDDINGS_DIMENSION,
+            },
+        )
 
     def error_indexing(self, repo: str):
         self.indexing_progress.pop(repo, None)
