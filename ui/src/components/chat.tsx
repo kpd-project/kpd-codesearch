@@ -111,47 +111,54 @@ export function Chat({ className }: ChatProps) {
 
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+      const appendToAssistant = (delta: string) => {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") {
+            return [
+              ...prev.slice(0, -1),
+              { ...last, content: last.content + delta },
+            ];
+          }
+          return prev;
+        });
+      };
+
+      const consumeSsePayload = (payload: string) => {
+        if (payload === "[DONE]") return;
+        try {
+          const parsed = JSON.parse(payload) as {
+            content?: string;
+            error?: string;
+          };
+          if (parsed.error) {
+            appendToAssistant(`\n\nОшибка: ${parsed.error}`);
+            return;
+          }
+          if (parsed.content != null && parsed.content !== "") {
+            appendToAssistant(parsed.content);
+          }
+        } catch {
+          appendToAssistant(payload);
+        }
+      };
+
+      let sseBuffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const text = new TextDecoder().decode(value);
-        const lines = text.split("\n");
+        sseBuffer += new TextDecoder().decode(value, { stream: true });
+        const lines = sseBuffer.split("\n");
+        sseBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                setMessages((prev) => {
-                  const last = prev[prev.length - 1];
-                  if (last?.role === "assistant") {
-                    return [
-                      ...prev.slice(0, -1),
-                      { ...last, content: last.content + parsed.content },
-                    ];
-                  }
-                  return prev;
-                });
-              }
-            } catch {
-              // Raw text
-              setMessages((prev) => {
-                const last = prev[prev.length - 1];
-                if (last?.role === "assistant") {
-                  return [
-                    ...prev.slice(0, -1),
-                    { ...last, content: last.content + data },
-                  ];
-                }
-                return prev;
-              });
-            }
-          }
+          if (!line.startsWith("data: ")) continue;
+          consumeSsePayload(line.slice(6));
         }
+      }
+      if (sseBuffer.startsWith("data: ")) {
+        consumeSsePayload(sseBuffer.slice(6));
       }
     } catch (error) {
       console.error("Query error:", error);
@@ -226,6 +233,7 @@ export function Chat({ className }: ChatProps) {
                 <div
                   className={cn(
                     "prose prose-lg max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+                    "[&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold [&_code]:rounded-md [&_code]:bg-muted/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em]",
                     msg.role === "user"
                       ? "text-secondary-foreground dark:prose-invert"
                       : "text-foreground dark:prose-invert"

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
+import json
 import logging
 import httpx
 import asyncio
@@ -443,13 +444,14 @@ async def query(request: QueryRequest):
                 temperature=state.settings.temperature,
             ):
                 parts.append(chunk)
-                yield f"data: {chunk}\n\n"
+                # Одна строка на событие — иначе переносы в чанке ломают SSE и клиент теряет текст.
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
             err = e
             logger.error(f"Query failed: {e}")
-            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
             body = "".join(parts)
             if err is not None:
