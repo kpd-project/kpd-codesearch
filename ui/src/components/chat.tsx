@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Trash2, Loader2 } from "lucide-react";
+import { Send, Trash2, Loader2, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -24,7 +27,8 @@ function loadMessagesFromStorage(): Message[] {
       (m): m is Message =>
         m != null &&
         typeof m === "object" &&
-        ((m as Message).role === "user" || (m as Message).role === "assistant") &&
+        ((m as Message).role === "user" ||
+          (m as Message).role === "assistant") &&
         typeof (m as Message).content === "string"
     );
   } catch {
@@ -39,6 +43,20 @@ function saveMessagesToStorage(messages: Message[]) {
     // квота / приватный режим
   }
 }
+
+const markdownComponents: Components = {
+  a: ({ className, href, children, ...props }) => (
+    <a
+      href={href}
+      className={cn("underline underline-offset-2", className)}
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+};
 
 interface ChatProps {
   className?: string;
@@ -92,7 +110,7 @@ export function Chat({ className }: ChatProps) {
       if (!reader) throw new Error("No response body");
 
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -104,14 +122,17 @@ export function Chat({ className }: ChatProps) {
           if (line.startsWith("data: ")) {
             const data = line.slice(6);
             if (data === "[DONE]") continue;
-            
+
             try {
               const parsed = JSON.parse(data);
               if (parsed.content) {
                 setMessages((prev) => {
                   const last = prev[prev.length - 1];
                   if (last?.role === "assistant") {
-                    return [...prev.slice(0, -1), { ...last, content: last.content + parsed.content }];
+                    return [
+                      ...prev.slice(0, -1),
+                      { ...last, content: last.content + parsed.content },
+                    ];
                   }
                   return prev;
                 });
@@ -121,7 +142,10 @@ export function Chat({ className }: ChatProps) {
               setMessages((prev) => {
                 const last = prev[prev.length - 1];
                 if (last?.role === "assistant") {
-                  return [...prev.slice(0, -1), { ...last, content: last.content + data }];
+                  return [
+                    ...prev.slice(0, -1),
+                    { ...last, content: last.content + data },
+                  ];
                 }
                 return prev;
               });
@@ -151,8 +175,8 @@ export function Chat({ className }: ChatProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      <ScrollArea className="flex-1 p-4 min-h-0">
-        <div className="space-y-4">
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="mx-auto w-full max-w-[120ch] px-4 py-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground mt-20">
               <p>Спросите что угодно о вашем коде!</p>
@@ -161,68 +185,110 @@ export function Chat({ className }: ChatProps) {
               </p>
             </div>
           )}
-          
+
           {messages.map((msg, i) => (
             <div
               key={i}
               className={cn(
-                "rounded-lg p-4",
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground ml-12"
-                  : "bg-muted text-foreground mr-12"
+                "flex",
+                msg.role === "user" ? "justify-end" : "justify-start"
               )}
             >
-              <div className="font-semibold text-xs mb-1 opacity-70">
-                {msg.role === "user" ? "Вы" : "Ассистент"}
-              </div>
-              <div className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert">
-                {msg.content}
+              <div
+                className={cn(
+                  "p-4 w-fit min-w-[min(100%,12rem)] max-w-full",
+                  msg.role === "user"
+                    ? "rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-none bg-linear-to-br from-blue-500/40 from-0% via-blue-500/18 via-45% to-secondary text-secondary-foreground dark:from-blue-400/35 dark:via-blue-500/15 dark:to-secondary"
+                    : "rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-none bg-muted text-foreground"
+                )}
+              >
+                <div
+                  className={cn(
+                    "text-xs mb-1 font-semibold",
+                    msg.role === "user"
+                      ? "opacity-70"
+                      : "flex items-center gap-1.5 text-muted-foreground"
+                  )}
+                >
+                  {msg.role === "user" ? (
+                    "Вы"
+                  ) : (
+                    <>
+                      <Bot
+                        className="h-4 w-4 shrink-0"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span>Ассистент</span>
+                    </>
+                  )}
+                </div>
+                <div
+                  className={cn(
+                    "prose prose-lg max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+                    msg.role === "user"
+                      ? "text-secondary-foreground dark:prose-invert"
+                      : "text-foreground dark:prose-invert"
+                  )}
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
-          
+
           {isStreaming && (
-            <div className="bg-muted text-foreground rounded-lg p-4 mr-12">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div className="flex justify-start">
+              <div className="rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-none bg-muted text-foreground p-4 w-fit min-w-[min(100%,12rem)] max-w-full flex items-center gap-2">
+                <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              </div>
             </div>
           )}
-          
+
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-border">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Спросите о вашем коде…"
-            disabled={isStreaming}
-            className="flex-1"
-          />
-          <Button type="submit" disabled={isStreaming || !input.trim()}>
-            {isStreaming ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            title="Очистить переписку"
-            aria-label="Очистить переписку"
-            disabled={messages.length === 0}
-            onClick={clearChat}
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </form>
-        <p className="text-xs text-muted-foreground mt-2">
-          Enter — отправить, Shift+Enter — новая строка
-        </p>
+      <div className="border-t border-border shrink-0">
+        <div className="mx-auto w-full max-w-[120ch] px-4 py-4">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Спросите о вашем коде…"
+              disabled={isStreaming}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={isStreaming || !input.trim()}>
+              {isStreaming ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              title="Очистить переписку"
+              aria-label="Очистить переписку"
+              disabled={messages.length === 0}
+              onClick={clearChat}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </form>
+          <p className="text-xs text-muted-foreground mt-2">
+            Enter — отправить, Shift+Enter — новая строка
+          </p>
+        </div>
       </div>
     </div>
   );

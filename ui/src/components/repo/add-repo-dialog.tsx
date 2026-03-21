@@ -68,7 +68,7 @@ export function AddRepoDialog({
                 console.log("name changed:", e.target.value);
                 setName(e.target.value);
               }}
-              placeholder="e.g., kpd-backend"
+              placeholder="e.g., my-backend"
               className="flex h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 py-1 text-base"
             />
           </div>
@@ -84,7 +84,7 @@ export function AddRepoDialog({
                 id="repo-path"
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
-                placeholder="kpd-backend"
+                placeholder="my-backend"
               />
             </div>
           </div>

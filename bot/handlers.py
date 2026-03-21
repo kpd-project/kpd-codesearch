@@ -32,7 +32,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(user.id if user else None):
         return
     await update.message.reply_text(
-        "👋 Привет! Я бот для работы с кодовой базой KPD.\n\n"
+        "👋 Привет! Я бот для вопросов по коду в подключённых репозиториях.\n\n"
         "Доступные команды:\n"
         "/list - Список доступных репозиториев\n"
         "/add <repo> - Добавить и проиндексировать репозиторий\n"
@@ -402,12 +402,12 @@ _CHAT_HISTORY_LIMIT = 20
 
 
 def _telegram_html(text: str) -> str:
-    """Подготовка текста для Telegram HTML.
-    
-    - Конвертирует *bold* → <b>bold</b>
-    - Конвертирует _italic_ → <i>italic</i>
-    - Конвертирует `code` → <code>code</code>
-    - Блоки ```...``` → <pre>...</pre>
+    """Подготовка текста для Telegram HTML (подмножество Markdown).
+
+    - **жирный** → <b>
+    - *курсив* (одна пара звёздочек на строку) → <i>
+    - _курсив_ → <i>
+    - `код` → <code>, блоки ``` → <pre>
     - Экранирует <, >, & в обычном тексте
     """
     result = []
@@ -434,32 +434,43 @@ def _telegram_html(text: str) -> str:
                 i = end + 1
                 continue
         
-        # Bold: *...* (но не ** и не в начале строки как маркер списка)
+        # Markdown bold: **...**
+        if char == "*" and i + 1 < len(text) and text[i + 1] == "*":
+            end = text.find("**", i + 2)
+            if end != -1:
+                bold_content = text[i + 2:end]
+                if "\n" not in bold_content:
+                    result.append(f"<b>{html_escape(bold_content)}</b>")
+                    i = end + 2
+                    continue
+            result.append("*")
+            i += 1
+            continue
+        
+        # Markdown italic: *...* (не в начале строки — маркер списка)
         if char == "*":
-            # Skip ** (double asterisk)
-            if i + 1 < len(text) and text[i + 1] == "*":
-                result.append("*")
-                i += 1
-                continue
-            
-            # Skip * at start of line (list marker)
             prev_char = text[i - 1] if i > 0 else "\n"
             if prev_char == "\n" or (i == 0):
                 result.append("*")
                 i += 1
                 continue
-            
-            # Find matching * (must be on same line, no newline inside)
-            end = text.find("*", i + 1)
-            if end != -1 and end > i + 1:
-                bold_content = text[i + 1:end]
-                # Don't allow newlines inside bold
-                if "\n" not in bold_content:
-                    result.append(f"<b>{html_escape(bold_content)}</b>")
-                    i = end + 1
-                    continue
-            
-            # No matching * or invalid — just output the character
+            end = i + 1
+            closing = -1
+            while end < len(text):
+                if text[end] == "\n":
+                    break
+                if text[end] == "*":
+                    if end + 1 < len(text) and text[end + 1] == "*":
+                        end += 2
+                        continue
+                    closing = end
+                    break
+                end += 1
+            if closing != -1 and closing > i + 1:
+                italic_content = text[i + 1:closing]
+                result.append(f"<i>{html_escape(italic_content)}</i>")
+                i = closing + 1
+                continue
             result.append("*")
             i += 1
             continue

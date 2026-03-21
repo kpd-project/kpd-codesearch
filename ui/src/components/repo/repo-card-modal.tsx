@@ -201,7 +201,7 @@ export function RepoCardModal({
                   setRelativePath(e.target.value);
                   setDirty((prev) => ({ ...prev, relativePath: true }));
                 }}
-                placeholder="например: kpd-frontend"
+                placeholder="например: my-frontend"
                 className="mt-1 font-mono"
               />
               <p className="text-xs text-muted-foreground">
