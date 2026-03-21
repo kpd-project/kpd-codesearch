@@ -298,6 +298,94 @@ async def generate_response(
                         pass
 
 
+def generate_simple_answer(
+    question: str,
+    *,
+    repo_name: str | None = None,
+    top_k: int = 10,
+    max_chunks: int = 10,
+    model: str | None = None,
+    temperature: float = 0.1,
+    on_status=None,
+) -> tuple[str, dict]:
+    """Синхронный простой RAG: один векторный поиск + один ответ LLM (без агента)."""
+    from .retriever import search_all_repos, search_in_repo
+
+    if on_status:
+        on_status("🔍 Ищу фрагменты кода…")
+
+    if repo_name:
+        chunks = search_in_repo(repo_name, question, top_k)
+        for c in chunks:
+            c["repo"] = repo_name
+    else:
+        chunks = search_all_repos(question, top_k)
+
+    chunks = chunks[:max_chunks]
+
+    if not chunks:
+        msg = (
+            "По запросу ничего не найдено в индексе. "
+            "Переформулируйте вопрос или проверьте, что репозитории проиндексированы."
+        )
+        meta = simple_session_metadata()
+        meta["model_primary"] = model or config.OPENROUTER_MODEL
+        return msg, meta
+
+    if on_status:
+        on_status("✍️ Формирую ответ…")
+
+    mdl = model or config.OPENROUTER_MODEL
+    context = "\n\n---\n\n".join(
+        f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
+        for c in chunks
+    )
+    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {question}"
+
+    try:
+        response = requests.post(
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": mdl,
+                "messages": [
+                    {"role": "system", "content": RAG_CONTEXT_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+                "temperature": temperature,
+                "max_tokens": 4000,
+            },
+            timeout=config.RAG_AGENT_TIMEOUT,
+        )
+    except requests.exceptions.Timeout:
+        answer = f"Таймаут при запросе к LLM ({config.RAG_AGENT_TIMEOUT}с)."
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+    except Exception as e:
+        answer = f"Ошибка: {e}"
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+
+    if response.status_code != 200:
+        answer = f"Ошибка API ({response.status_code}): {response.text[:500]}"
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+
+    data = response.json()
+    usage = data.get("usage") or {}
+    answer = data["choices"][0]["message"].get("content") or "Нет ответа"
+    meta = simple_session_metadata(usage)
+    meta["model_primary"] = mdl
+    return answer, meta
+
+
 def _make_session_data(
     tool_calls_log: list[dict],
     iterations: int,
@@ -317,3 +405,8 @@ def _make_session_data(
     if usage:
         data["usage"] = usage
     return data
+
+
+def simple_session_metadata(usage: dict | None = None) -> dict:
+    """Лог для простого RAG: один поиск чанков + один стриминговый ответ (без model_secondary)."""
+    return _make_session_data([], 1, usage, simple=True)

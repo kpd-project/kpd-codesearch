@@ -26,6 +26,7 @@ interface RuntimeSettings {
   temperature: number;
   top_k: number;
   max_chunks: number;
+  rag_mode: "simple" | "agent";
 }
 
 export function RuntimeSection() {
@@ -34,6 +35,7 @@ export function RuntimeSection() {
     temperature: 0.1,
     top_k: 10,
     max_chunks: 10,
+    rag_mode: "agent",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +46,15 @@ export function RuntimeSection() {
       .then((res) => res.json())
       .then((data) => {
         if (data.settings) {
-          setSettings(data.settings);
+          const s = data.settings as Partial<RuntimeSettings>;
+          setSettings((prev) => ({
+            ...prev,
+            ...s,
+            rag_mode:
+              s.rag_mode === "simple" || s.rag_mode === "agent"
+                ? s.rag_mode
+                : prev.rag_mode,
+          }));
         }
         setLoading(false);
       })
@@ -81,6 +91,29 @@ export function RuntimeSection() {
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div>
+          <Label htmlFor="rag-mode">Режим RAG (веб и Telegram)</Label>
+          <Select
+            value={settings.rag_mode}
+            onValueChange={(value) => {
+              if (value === "simple" || value === "agent") {
+                setSettings((s) => ({ ...s, rag_mode: value }));
+              }
+            }}
+          >
+            <SelectTrigger id="rag-mode" className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="simple">Простой (поиск + ответ)</SelectItem>
+              <SelectItem value="agent">Агент (инструменты)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-1">
+            Меняется сразу для всего API после сохранения
+          </p>
+        </div>
+
         <div>
           <Label htmlFor="model">Модель LLM</Label>
           <Select

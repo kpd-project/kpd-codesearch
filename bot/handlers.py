@@ -9,6 +9,8 @@ import config
 
 logger = logging.getLogger(__name__)
 import rag
+from rag.validation import validate_user_question
+from web.state import state
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
@@ -380,6 +382,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("handle_message: skip empty/question")
         return
 
+    qerr = validate_user_question(question)
+    if qerr:
+        await msg.reply_text(qerr)
+        return
+
     status_queue = queue.Queue()
     steps: list[str] = ["🤔 Думаю..."]
 
@@ -396,10 +403,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        future = loop.run_in_executor(
-            None,
-            lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
-        )
+        def run_rag():
+            if state.settings.rag_mode == "simple":
+                return rag.generate_simple_answer(
+                    question,
+                    repo_name=None,
+                    top_k=state.settings.top_k,
+                    max_chunks=state.settings.max_chunks,
+                    model=state.settings.model,
+                    temperature=state.settings.temperature,
+                    on_status=on_qdrant_status,
+                )
+            return rag.generate_answer(
+                question, history=history, on_status=on_qdrant_status
+            )
+
+        future = loop.run_in_executor(None, run_rag)
         while not future.done():
             try:
                 line = status_queue.get_nowait()
@@ -439,6 +458,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "duration_s": round(time.monotonic() - t0, 2),
             "steps": steps,
             **session_data,
+            "rag_mode": state.settings.rag_mode,
         })
 
 

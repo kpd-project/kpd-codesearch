@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Trash2, Loader2, Bot } from "lucide-react";
 import { ChatMarkdownBody } from "@/lib/chat-markdown";
+import { apiUrl } from "@/lib/api-url";
 import { cn } from "@/lib/utils";
 import { putSessionLog } from "@/lib/session-logs-idb";
 import { SessionLogDialog } from "@/pages/chat-logs/session-log-dialog";
@@ -130,13 +131,26 @@ export function Chat({ className }: ChatProps) {
     setIsStreaming(true);
 
     try {
-      const response = await fetch("/api/query", {
+      const response = await fetch(apiUrl("/api/query"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage }),
       });
 
-      if (!response.ok) throw new Error("Query failed");
+      if (!response.ok) {
+        let errText = "Не удалось получить ответ";
+        try {
+          const j = (await response.json()) as { detail?: unknown };
+          const d = j.detail;
+          if (typeof d === "string") errText = d;
+          else if (Array.isArray(d) && d[0] && typeof d[0] === "object" && d[0] !== null && "msg" in d[0]) {
+            errText = String((d[0] as { msg: string }).msg);
+          }
+        } catch {
+          /* ignore */
+        }
+        throw new Error(errText);
+      }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");

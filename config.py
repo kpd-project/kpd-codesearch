@@ -53,6 +53,10 @@ QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "200"))
 # Количество последних сессий в logs/ (ротация)
 LOG_ROTATION = int(os.getenv("LOG_ROTATION", "10"))
 
+# Режим RAG по умолчанию (переключается через /api/config/runtime и сразу действует для веба и бота)
+_r = os.getenv("RAG_RUNTIME_MODE", "agent").strip().lower()
+RAG_RUNTIME_MODE: str = _r if _r in ("simple", "agent") else "agent"
+
 # --- RAG Agent (generator.py) ---
 # Макс. итераций агентного цикла (поиск → LLM → tool_call → ...)
 RAG_AGENT_MAX_ITERATIONS = int(os.getenv("RAG_AGENT_MAX_ITERATIONS", "10"))

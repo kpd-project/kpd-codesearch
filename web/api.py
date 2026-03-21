@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 import json
 import logging
 import httpx
@@ -33,7 +33,8 @@ from web.websocket import ws_manager
 from rag.indexer import index_repository
 from rag.qdrant_client import collection_exists, delete_collection
 from rag.retriever import search_code
-from rag.generator import generate_answer
+from rag.generator import generate_answer, generate_response, simple_session_metadata
+from rag.validation import validate_user_question
 import queue
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class RuntimeSettingsUpdate(BaseModel):
     temperature: Optional[float] = None
     top_k: Optional[int] = None
     max_chunks: Optional[int] = None
+    rag_mode: Optional[Literal["simple", "agent"]] = None
 
 
 class RepoEnabledUpdate(BaseModel):
@@ -102,6 +104,7 @@ async def get_status():
             "temperature": state.settings.temperature,
             "top_k": state.settings.top_k,
             "max_chunks": state.settings.max_chunks,
+            "rag_mode": state.settings.rag_mode,
         },
         "indexing_progress": state.indexing_progress,
         "uptime": _format_uptime(datetime.now() - state.start_time),
@@ -391,6 +394,7 @@ async def get_config():
             "temperature": state.settings.temperature,
             "top_k": state.settings.top_k,
             "max_chunks": state.settings.max_chunks,
+            "rag_mode": state.settings.rag_mode,
         }
     }
 
@@ -406,7 +410,9 @@ async def update_runtime_settings(settings: RuntimeSettingsUpdate):
         state.settings.top_k = settings.top_k
     if settings.max_chunks is not None:
         state.settings.max_chunks = settings.max_chunks
-    
+    if settings.rag_mode is not None:
+        state.settings.rag_mode = settings.rag_mode
+
     await ws_manager.broadcast({
         "type": "settings_updated",
         "settings": {
@@ -414,6 +420,7 @@ async def update_runtime_settings(settings: RuntimeSettingsUpdate):
             "temperature": state.settings.temperature,
             "top_k": state.settings.top_k,
             "max_chunks": state.settings.max_chunks,
+            "rag_mode": state.settings.rag_mode,
         },
     })
     
@@ -429,8 +436,99 @@ def _sse_chunk_answer(text: str, chunk_size: int = 72) -> list[str]:
 
 @router.post("/api/query")
 async def query(request: QueryRequest):
-    """RAG: тот же агентный цикл, что в Telegram — статусы по SSE + «стрим» ответа."""
+    """RAG: простой (поиск + один ответ) или агентный цикл как в Telegram — SSE."""
+    qerr = validate_user_question(request.message)
+    if qerr:
+        raise HTTPException(status_code=400, detail=qerr)
+
     t0 = time.monotonic()
+
+    if state.settings.rag_mode == "simple":
+        async def generate_simple():
+            steps: list[str] = ["🤔 Думаю..."]
+            try:
+                yield f"data: {json.dumps({'type': 'status', 'text': steps[0]}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'text': '🔍 Ищу фрагменты кода…'}, ensure_ascii=False)}\n\n"
+                steps.append("🔍 Ищу фрагменты кода…")
+
+                chunks = await search_code(
+                    request.message,
+                    repo_filter=request.repo,
+                    top_k=state.settings.top_k,
+                )
+                chunks = chunks[: state.settings.max_chunks]
+
+                if not chunks:
+                    msg = (
+                        "По запросу ничего не найдено в индексе. "
+                        "Переформулируйте вопрос или проверьте, что репозитории проиндексированы."
+                    )
+                    yield f"data: {json.dumps({'content': msg}, ensure_ascii=False)}\n\n"
+                    total_s = round(time.monotonic() - t0, 2)
+                    steps.append("✅ Готово.")
+                    session_data = simple_session_metadata()
+                    session_data["model_primary"] = state.settings.model
+                    log_entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "source": "web",
+                        "user_id": None,
+                        "username": None,
+                        "repo_filter": request.repo,
+                        "question": request.message,
+                        "answer": msg,
+                        "duration_s": total_s,
+                        "steps": steps,
+                        "tool_calls_count": 0,
+                        "rag_mode": state.settings.rag_mode,
+                    }
+                    log_entry.update(session_data)
+                    yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                yield f"data: {json.dumps({'type': 'status', 'text': '✍️ Формирую ответ…'}, ensure_ascii=False)}\n\n"
+                steps.append("✍️ Формирую ответ…")
+
+                parts: list[str] = []
+                async for piece in generate_response(
+                    request.message,
+                    chunks,
+                    model=state.settings.model,
+                    temperature=state.settings.temperature,
+                ):
+                    parts.append(piece)
+                    yield f"data: {json.dumps({'content': piece}, ensure_ascii=False)}\n\n"
+
+                body = "".join(parts)
+                total_s = round(time.monotonic() - t0, 2)
+                steps.append(f"✅ Готово. {total_s} с.")
+                session_data = simple_session_metadata()
+                session_data["model_primary"] = state.settings.model
+                log_entry = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "source": "web",
+                    "user_id": None,
+                    "username": None,
+                    "repo_filter": request.repo,
+                    "question": request.message,
+                    "answer": body,
+                    "duration_s": total_s,
+                    "steps": steps,
+                    "tool_calls_count": 0,
+                    "rag_mode": state.settings.rag_mode,
+                }
+                log_entry.update(session_data)
+                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                logger.error(f"Simple query failed: {e}")
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            generate_simple(),
+            media_type="text/event-stream",
+        )
+
     loop = asyncio.get_running_loop()
     status_queue: queue.Queue[str] = queue.Queue()
     steps: list[str] = ["🤔 Думаю..."]
@@ -501,6 +599,7 @@ async def query(request: QueryRequest):
                 "duration_s": total_s,
                 "steps": steps,
                 "tool_calls_count": tool_calls_count,
+                "rag_mode": state.settings.rag_mode,
             }
             log_entry.update(session_data)
 
