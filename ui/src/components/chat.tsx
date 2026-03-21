@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { Components } from "react-markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Trash2, Loader2, Bot } from "lucide-react";
+import { ChatMarkdownBody } from "@/lib/chat-markdown";
 import { cn } from "@/lib/utils";
 import { putSessionLog } from "@/lib/session-logs-idb";
 import { SessionLogDialog } from "@/pages/chat-logs/session-log-dialog";
@@ -90,20 +88,6 @@ function saveMessagesToStorage(messages: Message[]) {
     // квота / приватный режим
   }
 }
-
-const markdownComponents: Components = {
-  a: ({ className, href, children, ...props }) => (
-    <a
-      href={href}
-      className={cn("underline underline-offset-2", className)}
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
-    >
-      {children}
-    </a>
-  ),
-};
 
 interface ChatProps {
   className?: string;
@@ -385,22 +369,10 @@ export function Chat({ className }: ChatProps) {
                     <span className="leading-snug flex-1 min-w-0">{msg.status}</span>
                   </div>
                 )}
-                <div
-                  className={cn(
-                    "prose prose-lg prose-neutral max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
-                    "[&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold [&_code]:rounded-md [&_code]:bg-muted/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em]",
-                    msg.role === "user"
-                      ? "text-secondary-foreground dark:prose-invert"
-                      : "text-foreground dark:prose-invert"
-                  )}
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
+                <ChatMarkdownBody
+                  content={msg.content}
+                  variant={msg.role === "user" ? "user" : "assistant"}
+                />
                 {msg.role === "assistant" && msg.answerFooter && (
                   <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60 space-y-1.5">
                     <p>
