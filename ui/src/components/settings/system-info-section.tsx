@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Server, Database, GitBranch, Users, Key } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Info, Server, Database, GitBranch, Users, Key } from "lucide-react";
 
 interface SystemConfig {
   qdrant: { url: string; api_key_masked: string; has_api_key: boolean };
@@ -107,9 +107,11 @@ export function SystemInfoSection() {
           />
         </div>
 
-        <Alert variant="warning">
+        <Alert>
+          <Info className="size-4" aria-hidden />
+          <AlertTitle>Системные настройки в .env</AlertTitle>
           <AlertDescription>
-            Для изменения системных настроек отредактируйте файл{" "}
+            Для изменения отредактируйте файл{" "}
             <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm">
               .env
             </code>{" "}
