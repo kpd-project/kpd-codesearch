@@ -72,6 +72,8 @@ TOOLS = [
 def _execute_tool(name: str, args: dict, on_status=None) -> str:
     logger.debug("Tool call: %s(%s)", name, args)
     if name == "list_indexed_repos":
+        if on_status:
+            on_status("📋 Проверяю список проиндексированных репозиториев…")
         indexed = list_collections()
         if not indexed:
             return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."

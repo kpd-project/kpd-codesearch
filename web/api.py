@@ -34,7 +34,8 @@ from web.websocket import ws_manager
 from rag.indexer import index_repository
 from rag.qdrant_client import collection_exists, delete_collection
 from rag.retriever import search_code
-from rag.generator import generate_response
+from rag.generator import generate_answer
+import queue
 
 logger = logging.getLogger(__name__)
 
@@ -420,32 +421,72 @@ async def update_runtime_settings(settings: RuntimeSettingsUpdate):
     return {"status": "ok", "settings": state.settings.__dict__}
 
 
+def _sse_chunk_answer(text: str, chunk_size: int = 72) -> list[str]:
+    """Разбивает ответ на части для SSE (одна строка JSON на событие)."""
+    if not text:
+        return [""]
+    return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+
 @router.post("/api/query")
 async def query(request: QueryRequest):
-    """RAG query with streaming response."""
+    """RAG: тот же агентный цикл, что в Telegram — статусы по SSE + «стрим» ответа."""
     t0 = time.monotonic()
+    loop = asyncio.get_running_loop()
+    status_queue: queue.Queue[str] = queue.Queue()
+    steps: list[str] = ["🤔 Думаю..."]
+
+    def on_status(text: str):
+        status_queue.put(text)
+        steps.append(text)
 
     async def generate():
         parts: list[str] = []
         err: Exception | None = None
+        session_data: dict = {}
         try:
-            # Search for relevant chunks
-            results = await search_code(
-                query=request.message,
-                repo_filter=request.repo,
-                top_k=state.settings.max_chunks,
+            yield f"data: {json.dumps({'type': 'status', 'text': steps[0]}, ensure_ascii=False)}\n\n"
+
+            future = loop.run_in_executor(
+                None,
+                lambda: generate_answer(
+                    request.message,
+                    history=None,
+                    repo_name=request.repo,
+                    on_status=on_status,
+                ),
             )
 
-            # Generate response
-            async for chunk in generate_response(
-                query=request.message,
-                context_chunks=results,
-                model=state.settings.model,
-                temperature=state.settings.temperature,
-            ):
+            while not future.done():
+                try:
+                    while True:
+                        line = status_queue.get_nowait()
+                        yield f"data: {json.dumps({'type': 'status', 'text': line}, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    pass
+                await asyncio.sleep(0.12)
+
+            while True:
+                try:
+                    line = status_queue.get_nowait()
+                    yield f"data: {json.dumps({'type': 'status', 'text': line}, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    break
+
+            answer, session_data = future.result()
+            usage = session_data.get("usage") or {}
+            pt, ct, tt = usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("total_tokens")
+            done_text = "✅ Готово."
+            if (pt or 0) > 0 or (ct or 0) > 0:
+                done_text = (
+                    f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
+                )
+            steps.append(done_text)
+            yield f"data: {json.dumps({'type': 'status', 'text': done_text}, ensure_ascii=False)}\n\n"
+
+            for chunk in _sse_chunk_answer(answer or ""):
                 parts.append(chunk)
-                # Одна строка на событие — иначе переносы в чанке ломают SSE и клиент теряет текст.
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
+                yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -458,19 +499,19 @@ async def query(request: QueryRequest):
                 body = (
                     f"{body}\n\n❌ Ошибка: {err}" if body else f"❌ Ошибка: {str(err)}"
                 )
-            save_session(
-                {
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "source": "web",
-                    "user_id": None,
-                    "username": None,
-                    "repo_filter": request.repo,
-                    "question": request.message,
-                    "answer": body,
-                    "duration_s": round(time.monotonic() - t0, 2),
-                    "model": state.settings.model,
-                }
-            )
+            log_entry = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "source": "web",
+                "user_id": None,
+                "username": None,
+                "repo_filter": request.repo,
+                "question": request.message,
+                "answer": body,
+                "duration_s": round(time.monotonic() - t0, 2),
+                "steps": steps,
+            }
+            log_entry.update(session_data)
+            save_session(log_entry)
 
     return StreamingResponse(
         generate(),
