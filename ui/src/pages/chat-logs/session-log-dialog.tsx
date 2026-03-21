@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, Download } from "lucide-react";
+import { Copy, Download, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +18,42 @@ import {
 import { cn } from "@/lib/utils";
 import { formatPayloadAsJson, JsonHighlighter } from "./json-log-view";
 import { SessionLogChatView } from "./session-log-chat-view";
+
+const SESSION_LOG_DIALOG_UI_KEY = "kpd-codesearch-session-log-dialog-ui-v1";
+
+function loadSessionLogDialogUi(): {
+  expanded: boolean;
+  viewTab: "chat" | "json";
+} {
+  if (typeof window === "undefined") {
+    return { expanded: false, viewTab: "chat" };
+  }
+  try {
+    const raw = localStorage.getItem(SESSION_LOG_DIALOG_UI_KEY);
+    if (!raw) return { expanded: false, viewTab: "chat" };
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed == null || typeof parsed !== "object") {
+      return { expanded: false, viewTab: "chat" };
+    }
+    const o = parsed as Record<string, unknown>;
+    const expanded = o.expanded === true;
+    const viewTab = o.viewTab === "json" ? "json" : "chat";
+    return { expanded, viewTab };
+  } catch {
+    return { expanded: false, viewTab: "chat" };
+  }
+}
+
+function saveSessionLogDialogUi(prefs: {
+  expanded: boolean;
+  viewTab: "chat" | "json";
+}): void {
+  try {
+    localStorage.setItem(SESSION_LOG_DIALOG_UI_KEY, JSON.stringify(prefs));
+  } catch {
+    // квота / приватный режим
+  }
+}
 
 function previewQuestion(payload: Record<string, unknown>): string {
   const q = payload.question;
@@ -46,6 +82,7 @@ export function SessionLogDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [viewTab, setViewTab] = useState<"chat" | "json">("chat");
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!open || !logId) {
@@ -91,7 +128,12 @@ export function SessionLogDialog({
     if (open && logId) setViewTab("chat");
   }, [open, logId]);
 
-  const selectedJson = record != null ? formatPayloadAsJson(record.payload) : "";
+  useEffect(() => {
+    if (!open) setExpanded(false);
+  }, [open]);
+
+  const selectedJson =
+    record != null ? formatPayloadAsJson(record.payload) : "";
 
   const handleCopy = async () => {
     if (!selectedJson) return;
@@ -109,10 +151,27 @@ export function SessionLogDialog({
       <DialogContent
         showCloseButton
         className={cn(
-          "flex max-h-[min(85vh,720px)] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0",
-          "sm:max-w-3xl md:max-w-4xl"
+          "flex w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl md:max-w-4xl",
+          expanded ? "h-[95vh] max-h-[95vh]" : "max-h-[min(85vh,720px)]"
         )}
       >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute top-2 right-11 z-10"
+          title={
+            expanded ? "Свернуть окно" : "Развернуть на весь экран по высоте"
+          }
+          aria-label={expanded ? "Свернуть окно" : "Развернуть окно"}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? (
+            <Minimize2 className="size-4" aria-hidden />
+          ) : (
+            <Maximize2 className="size-4" aria-hidden />
+          )}
+        </Button>
         <DialogHeader className="shrink-0 space-y-1 border-b border-border px-6 py-4">
           <DialogTitle className="text-left">Лог сессии</DialogTitle>
           <DialogDescription className="text-left line-clamp-2">
@@ -128,7 +187,12 @@ export function SessionLogDialog({
           ) : null}
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col px-6 py-4",
+            expanded && "min-h-0 overflow-hidden"
+          )}
+        >
           {loadError ? (
             <p className="text-sm text-muted-foreground">{loadError}</p>
           ) : loading ? (
@@ -137,7 +201,10 @@ export function SessionLogDialog({
             <Tabs
               value={viewTab}
               onValueChange={(v) => setViewTab(v as "chat" | "json")}
-              className="flex min-h-0 flex-1 flex-col gap-3"
+              className={cn(
+                "flex min-h-0 flex-1 flex-col gap-3",
+                expanded && "min-h-0 flex-1 overflow-hidden"
+              )}
             >
               <TabsList className="h-9 w-full shrink-0 justify-start sm:w-auto">
                 <TabsTrigger value="chat">Чат</TabsTrigger>
@@ -145,10 +212,15 @@ export function SessionLogDialog({
               </TabsList>
               <TabsContent
                 value="chat"
-                className="m-0 flex min-h-0 flex-1 flex-col"
+                className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden"
                 keepMounted
               >
-                <ScrollArea className="h-[min(55vh,480px)] rounded-lg border border-border bg-muted/40">
+                <ScrollArea
+                  className={cn(
+                    "rounded-lg border border-border bg-muted/40",
+                    expanded ? "min-h-0 flex-1 basis-0" : "h-[min(55vh,480px)]"
+                  )}
+                >
                   <div className="p-4">
                     <SessionLogChatView payload={record.payload} />
                   </div>
@@ -156,10 +228,15 @@ export function SessionLogDialog({
               </TabsContent>
               <TabsContent
                 value="json"
-                className="m-0 flex min-h-0 flex-1 flex-col"
+                className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden"
                 keepMounted
               >
-                <ScrollArea className="h-[min(55vh,480px)] rounded-lg border border-border bg-muted/40">
+                <ScrollArea
+                  className={cn(
+                    "rounded-lg border border-border bg-muted/40",
+                    expanded ? "min-h-0 flex-1 basis-0" : "h-[min(55vh,480px)]"
+                  )}
+                >
                   <div className="p-4">
                     <pre className="m-0 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
                       <code className="text-foreground">
