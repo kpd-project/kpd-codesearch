@@ -81,8 +81,12 @@ export function SessionLogDialog({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [viewTab, setViewTab] = useState<"chat" | "json">("chat");
-  const [expanded, setExpanded] = useState(false);
+  const [dialogUi, setDialogUi] = useState(loadSessionLogDialogUi);
+  const { expanded, viewTab } = dialogUi;
+
+  useEffect(() => {
+    saveSessionLogDialogUi(dialogUi);
+  }, [dialogUi]);
 
   useEffect(() => {
     if (!open || !logId) {
@@ -90,7 +94,6 @@ export function SessionLogDialog({
       setLoading(false);
       setLoadError(null);
       setCopied(false);
-      setViewTab("chat");
       return;
     }
 
@@ -124,14 +127,6 @@ export function SessionLogDialog({
     };
   }, [open, logId, initialRecord]);
 
-  useEffect(() => {
-    if (open && logId) setViewTab("chat");
-  }, [open, logId]);
-
-  useEffect(() => {
-    if (!open) setExpanded(false);
-  }, [open]);
-
   const selectedJson =
     record != null ? formatPayloadAsJson(record.payload) : "";
 
@@ -164,7 +159,9 @@ export function SessionLogDialog({
             expanded ? "Свернуть окно" : "Развернуть на весь экран по высоте"
           }
           aria-label={expanded ? "Свернуть окно" : "Развернуть окно"}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() =>
+            setDialogUi((prev) => ({ ...prev, expanded: !prev.expanded }))
+          }
         >
           {expanded ? (
             <Minimize2 className="size-4" aria-hidden />
@@ -200,7 +197,12 @@ export function SessionLogDialog({
           ) : record != null ? (
             <Tabs
               value={viewTab}
-              onValueChange={(v) => setViewTab(v as "chat" | "json")}
+              onValueChange={(v) =>
+                setDialogUi((prev) => ({
+                  ...prev,
+                  viewTab: v as "chat" | "json",
+                }))
+              }
               className={cn(
                 "flex min-h-0 flex-1 flex-col gap-3",
                 expanded && "min-h-0 flex-1 overflow-hidden"
