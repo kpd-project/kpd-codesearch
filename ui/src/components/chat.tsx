@@ -7,16 +7,47 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Trash2, Loader2, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { putSessionLog } from "@/lib/session-logs-idb";
+import { SessionLogDialog } from "@/pages/chat-logs/session-log-dialog";
+
+/** Статистика ответа (из SSE meta), подвал под текстом */
+interface AnswerFooterMeta {
+  duration_s: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  tool_calls_count: number;
+  /** Ключ записи в IndexedDB (полный JSON лога) */
+  log_id: string;
+}
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   /** Ход агента (как в Telegram) до появления текста ответа */
   status?: string;
+  answerFooter?: AnswerFooterMeta;
 }
 
 /** Один локальный чат; версия ключа — при смене формата данных. */
-const CHAT_STORAGE_KEY = "kpd-codesearch-chat-messages-v2";
+const CHAT_STORAGE_KEY = "kpd-codesearch-chat-messages-v5";
+
+function isAnswerFooterMeta(v: unknown): v is AnswerFooterMeta {
+  if (v == null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.duration_s === "number" &&
+    typeof o.prompt_tokens === "number" &&
+    typeof o.completion_tokens === "number" &&
+    typeof o.total_tokens === "number" &&
+    typeof o.tool_calls_count === "number" &&
+    typeof o.log_id === "string"
+  );
+}
+
+function formatTokenLine(n: number): string {
+  return n > 0 ? n.toLocaleString("ru-RU") : "—";
+}
 
 function loadMessagesFromStorage(): Message[] {
   if (typeof window === "undefined") return [];
@@ -25,16 +56,28 @@ function loadMessagesFromStorage(): Message[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (m): m is Message =>
-        m != null &&
-        typeof m === "object" &&
-        ((m as Message).role === "user" ||
-          (m as Message).role === "assistant") &&
-        typeof (m as Message).content === "string" &&
-        ((m as Message).status === undefined ||
-          typeof (m as Message).status === "string")
-    );
+    return parsed
+      .map((item) => {
+        if (item == null || typeof item !== "object") return null;
+        const m = item as Message;
+        if (
+          m.role === "assistant" &&
+          m.answerFooter != null &&
+          !isAnswerFooterMeta(m.answerFooter)
+        ) {
+          return { ...m, answerFooter: undefined };
+        }
+        return m;
+      })
+      .filter(
+        (m): m is Message =>
+          m != null &&
+          typeof m === "object" &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string" &&
+          (m.status === undefined || typeof m.status === "string") &&
+          (m.answerFooter === undefined || isAnswerFooterMeta(m.answerFooter))
+      );
   } catch {
     return [];
   }
@@ -70,6 +113,7 @@ export function Chat({ className }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>(loadMessagesFromStorage);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [sessionLogModalId, setSessionLogModalId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAutoScrollAtRef = useRef<number>(0);
@@ -115,7 +159,12 @@ export function Chat({ className }: ChatProps) {
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "", status: "🤔 Думаю..." },
+        {
+          role: "assistant",
+          content: "",
+          status: "🤔 Думаю...",
+          answerFooter: undefined,
+        },
       ]);
 
       const appendToAssistant = (delta: string) => {
@@ -157,9 +206,58 @@ export function Chat({ className }: ChatProps) {
             text?: string;
             content?: string;
             error?: string;
+            duration_s?: number;
+            usage?: Record<string, unknown>;
+            tool_calls_count?: number;
+            session_log?: Record<string, unknown>;
           };
           if (parsed.error) {
             appendToAssistant(`\n\nОшибка: ${parsed.error}`);
+            return;
+          }
+          if (parsed.type === "meta" && typeof parsed.duration_s === "number") {
+            const duration_s = parsed.duration_s;
+            void (async () => {
+              const u = parsed.usage || {};
+              const pt = Number(u.prompt_tokens ?? 0);
+              const ct = Number(u.completion_tokens ?? 0);
+              const tt = Number(u.total_tokens ?? pt + ct);
+              let logId = "";
+              if (parsed.session_log && typeof parsed.session_log === "object") {
+                const id = crypto.randomUUID();
+                try {
+                  await putSessionLog(id, {
+                    ...parsed.session_log,
+                    client_log_id: id,
+                  });
+                  logId = id;
+                } catch (e) {
+                  console.error("session log IDB:", e);
+                }
+              }
+              const footer: AnswerFooterMeta = {
+                duration_s,
+                prompt_tokens: pt,
+                completion_tokens: ct,
+                total_tokens: tt,
+                tool_calls_count: Number(parsed.tool_calls_count ?? 0),
+                log_id: logId,
+              };
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant") {
+                  return [
+                    ...prev.slice(0, -1),
+                    {
+                      ...last,
+                      status: undefined,
+                      answerFooter: footer,
+                    },
+                  ];
+                }
+                return prev;
+              });
+            })();
             return;
           }
           if (parsed.type === "status" && parsed.text != null) {
@@ -204,12 +302,17 @@ export function Chat({ className }: ChatProps) {
                 ? `${last.content}\n\nОшибка: не удалось получить ответ`
                 : "Ошибка: не удалось получить ответ",
               status: undefined,
+              answerFooter: undefined,
             },
           ];
         }
         return [
           ...prev,
-          { role: "assistant", content: "Ошибка: не удалось получить ответ" },
+          {
+            role: "assistant",
+            content: "Ошибка: не удалось получить ответ",
+            answerFooter: undefined,
+          },
         ];
       });
     } finally {
@@ -278,9 +381,7 @@ export function Chat({ className }: ChatProps) {
                 </div>
                 {msg.role === "assistant" && msg.status && (
                   <div className="text-xs text-muted-foreground mb-2 flex items-start gap-2 border-b border-border/60 pb-2">
-                    {!msg.status.startsWith("✅") ? (
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 mt-0.5 animate-spin" />
-                    ) : null}
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 mt-0.5 animate-spin" />
                     <span className="leading-snug flex-1 min-w-0">{msg.status}</span>
                   </div>
                 )}
@@ -300,6 +401,37 @@ export function Chat({ className }: ChatProps) {
                     {msg.content}
                   </ReactMarkdown>
                 </div>
+                {msg.role === "assistant" && msg.answerFooter && (
+                  <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60 space-y-1.5">
+                    <p>
+                      <span className="text-foreground/80">Токены:</span> всего{" "}
+                      {formatTokenLine(msg.answerFooter.total_tokens)} · на вход:{" "}
+                      {formatTokenLine(msg.answerFooter.prompt_tokens)} · на выход:{" "}
+                      {formatTokenLine(msg.answerFooter.completion_tokens)}
+                    </p>
+                    <p>
+                      <span className="text-foreground/80">Время ответа:</span>{" "}
+                      {msg.answerFooter.duration_s.toFixed(1)} с
+                    </p>
+                    <p>
+                      <span className="text-foreground/80">Вызовы инструментов:</span>{" "}
+                      {msg.answerFooter.tool_calls_count}
+                    </p>
+                    {msg.answerFooter.log_id ? (
+                      <p>
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 text-primary bg-transparent border-0 cursor-pointer p-0 font-inherit text-left"
+                          onClick={() =>
+                            setSessionLogModalId(msg.answerFooter!.log_id)
+                          }
+                        >
+                          Просмотр лога сессии
+                        </button>
+                      </p>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -343,6 +475,14 @@ export function Chat({ className }: ChatProps) {
           </p>
         </div>
       </div>
+
+      <SessionLogDialog
+        open={sessionLogModalId != null}
+        onOpenChange={(open) => {
+          if (!open) setSessionLogModalId(null);
+        }}
+        logId={sessionLogModalId}
+      />
     </div>
   );
 }

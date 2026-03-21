@@ -12,7 +12,6 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import config
-from bot.session_logger import save_session
 
 
 def _format_uptime(delta: timedelta) -> str:
@@ -475,30 +474,22 @@ async def query(request: QueryRequest):
 
             answer, session_data = future.result()
             usage = session_data.get("usage") or {}
-            pt, ct, tt = usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("total_tokens")
-            done_text = "✅ Готово."
-            if (pt or 0) > 0 or (ct or 0) > 0:
-                done_text = (
-                    f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
-                )
-            steps.append(done_text)
-            yield f"data: {json.dumps({'type': 'status', 'text': done_text}, ensure_ascii=False)}\n\n"
+            tool_calls_count = len(session_data.get("tool_calls") or [])
 
             for chunk in _sse_chunk_answer(answer or ""):
                 parts.append(chunk)
                 yield f"data: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
 
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            err = e
-            logger.error(f"Query failed: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            body = "".join(parts)
-            if err is not None:
-                body = (
-                    f"{body}\n\n❌ Ошибка: {err}" if body else f"❌ Ошибка: {str(err)}"
+            total_s = round(time.monotonic() - t0, 2)
+            pt, ct, tt = usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("total_tokens")
+            done_line = f"✅ Готово. {total_s} с."
+            if (pt or 0) > 0 or (ct or 0) > 0:
+                done_line += (
+                    f" Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
                 )
+            steps.append(done_line)
+
+            body = "".join(parts)
             log_entry = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "source": "web",
@@ -507,11 +498,19 @@ async def query(request: QueryRequest):
                 "repo_filter": request.repo,
                 "question": request.message,
                 "answer": body,
-                "duration_s": round(time.monotonic() - t0, 2),
+                "duration_s": total_s,
                 "steps": steps,
+                "tool_calls_count": tool_calls_count,
             }
             log_entry.update(session_data)
-            save_session(log_entry)
+
+            yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': tool_calls_count, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            err = e
+            logger.error(f"Query failed: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(
         generate(),
