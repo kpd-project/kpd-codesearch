@@ -232,7 +232,7 @@ export function Chat({ className }: ChatProps) {
                 </div>
                 <div
                   className={cn(
-                    "prose prose-lg max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+                    "prose prose-lg prose-neutral max-w-none break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto",
                     "[&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold [&_code]:rounded-md [&_code]:bg-muted/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.9em]",
                     msg.role === "user"
                       ? "text-secondary-foreground dark:prose-invert"
