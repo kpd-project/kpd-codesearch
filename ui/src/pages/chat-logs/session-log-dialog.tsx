@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/session-logs-idb";
 import { cn } from "@/lib/utils";
 import { formatPayloadAsJson, JsonHighlighter } from "./json-log-view";
+import { SessionLogChatView } from "./session-log-chat-view";
 
 function previewQuestion(payload: Record<string, unknown>): string {
   const q = payload.question;
@@ -43,6 +45,7 @@ export function SessionLogDialog({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [viewTab, setViewTab] = useState<"chat" | "json">("chat");
 
   useEffect(() => {
     if (!open || !logId) {
@@ -50,6 +53,7 @@ export function SessionLogDialog({
       setLoading(false);
       setLoadError(null);
       setCopied(false);
+      setViewTab("chat");
       return;
     }
 
@@ -82,6 +86,10 @@ export function SessionLogDialog({
       cancelled = true;
     };
   }, [open, logId, initialRecord]);
+
+  useEffect(() => {
+    if (open && logId) setViewTab("chat");
+  }, [open, logId]);
 
   const selectedJson = record != null ? formatPayloadAsJson(record.payload) : "";
 
@@ -120,22 +128,49 @@ export function SessionLogDialog({
           ) : null}
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
           {loadError ? (
             <p className="text-sm text-muted-foreground">{loadError}</p>
           ) : loading ? (
             <p className="text-sm text-muted-foreground">Загрузка…</p>
-          ) : (
-            <ScrollArea className="h-[min(55vh,480px)] rounded-lg border border-border bg-muted/40">
-              <div className="p-4">
-                <pre className="m-0 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
-                  <code className="text-foreground">
-                    <JsonHighlighter text={selectedJson} />
-                  </code>
-                </pre>
-              </div>
-            </ScrollArea>
-          )}
+          ) : record != null ? (
+            <Tabs
+              value={viewTab}
+              onValueChange={(v) => setViewTab(v as "chat" | "json")}
+              className="flex min-h-0 flex-1 flex-col gap-3"
+            >
+              <TabsList className="h-9 w-full shrink-0 justify-start sm:w-auto">
+                <TabsTrigger value="chat">Чат</TabsTrigger>
+                <TabsTrigger value="json">JSON</TabsTrigger>
+              </TabsList>
+              <TabsContent
+                value="chat"
+                className="m-0 flex min-h-0 flex-1 flex-col"
+                keepMounted
+              >
+                <ScrollArea className="h-[min(55vh,480px)] rounded-lg border border-border bg-muted/40">
+                  <div className="p-4">
+                    <SessionLogChatView payload={record.payload} />
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+              <TabsContent
+                value="json"
+                className="m-0 flex min-h-0 flex-1 flex-col"
+                keepMounted
+              >
+                <ScrollArea className="h-[min(55vh,480px)] rounded-lg border border-border bg-muted/40">
+                  <div className="p-4">
+                    <pre className="m-0 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words">
+                      <code className="text-foreground">
+                        <JsonHighlighter text={selectedJson} />
+                      </code>
+                    </pre>
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
