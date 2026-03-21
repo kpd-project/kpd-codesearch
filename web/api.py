@@ -28,6 +28,7 @@ def _format_uptime(delta: timedelta) -> str:
 from web.state import state
 from web.websocket import ws_manager
 from rag.indexer import index_repository
+from rag.qdrant_client import collection_exists, delete_collection
 from rag.retriever import search_code
 from rag.generator import generate_response
 
@@ -208,6 +209,8 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
 
     async def run_index():
         try:
+            if collection_exists(name):
+                delete_collection(name)
             total_chunks = await index_repository(
                 repo_path=repo_path,
                 collection_name=name,
