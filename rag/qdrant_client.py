@@ -82,7 +82,13 @@ def get_collection_properties(collection_name: str) -> dict:
     try:
         resp = httpx.get(url, headers=_rest_headers(), verify=False, timeout=10)
         if resp.status_code == 200:
-            return resp.json().get("result", {})
+            result = resp.json().get("result")
+            if not isinstance(result, dict):
+                return {}
+            nested = result.get("properties")
+            if isinstance(nested, dict) and nested:
+                return nested
+            return result
     except Exception:
         pass
     return {}
