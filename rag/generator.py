@@ -245,7 +245,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
 
 RAG_CONTEXT_SYSTEM = (
     "Ты помощник по коду. Отвечай кратко, опираясь только на предоставленный контекст. "
-    "Форматируй ответ в Markdown (заголовки, списки, **жирный**, `код`, блоки кода)."
+    "Ответ в Markdown."
 )
 
 
