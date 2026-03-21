@@ -1,9 +1,13 @@
 import {
+  createContext,
+  createElement,
+  useContext,
   useState,
   useEffect,
   useCallback,
   useMemo,
   useRef,
+  type ReactNode,
 } from "react";
 import type { IndexingProgressEntry } from "@/types/repo";
 
@@ -104,7 +108,7 @@ function useWebSocket() {
   return { connected, messages, ws };
 }
 
-export function useStatus() {
+function useStatusState() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -193,4 +197,22 @@ export function useStatus() {
     refetch: fetchStatus,
     wsConnected: connected,
   };
+}
+
+export type StatusContextValue = ReturnType<typeof useStatusState>;
+
+const StatusContext = createContext<StatusContextValue | null>(null);
+
+/** Один экземпляр WS + опрос /api/status на всё приложение. */
+export function StatusProvider({ children }: { children: ReactNode }) {
+  const value = useStatusState();
+  return createElement(StatusContext.Provider, { value }, children);
+}
+
+export function useStatus(): StatusContextValue {
+  const ctx = useContext(StatusContext);
+  if (!ctx) {
+    throw new Error("useStatus must be used within StatusProvider");
+  }
+  return ctx;
 }
