@@ -6,10 +6,12 @@ from typing import List, Optional
 import logging
 import httpx
 import asyncio
+import time
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import config
+from bot.session_logger import save_session
 
 
 def _format_uptime(delta: timedelta) -> str:
@@ -420,8 +422,11 @@ async def update_runtime_settings(settings: RuntimeSettingsUpdate):
 @router.post("/api/query")
 async def query(request: QueryRequest):
     """RAG query with streaming response."""
-    
+    t0 = time.monotonic()
+
     async def generate():
+        parts: list[str] = []
+        err: Exception | None = None
         try:
             # Search for relevant chunks
             results = await search_code(
@@ -429,7 +434,7 @@ async def query(request: QueryRequest):
                 repo_filter=request.repo,
                 top_k=state.settings.max_chunks,
             )
-            
+
             # Generate response
             async for chunk in generate_response(
                 query=request.message,
@@ -437,14 +442,34 @@ async def query(request: QueryRequest):
                 model=state.settings.model,
                 temperature=state.settings.temperature,
             ):
+                parts.append(chunk)
                 yield f"data: {chunk}\n\n"
-            
+
             yield "data: [DONE]\n\n"
-            
         except Exception as e:
+            err = e
             logger.error(f"Query failed: {e}")
             yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
-    
+        finally:
+            body = "".join(parts)
+            if err is not None:
+                body = (
+                    f"{body}\n\n❌ Ошибка: {err}" if body else f"❌ Ошибка: {str(err)}"
+                )
+            save_session(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "source": "web",
+                    "user_id": None,
+                    "username": None,
+                    "repo_filter": request.repo,
+                    "question": request.message,
+                    "answer": body,
+                    "duration_s": round(time.monotonic() - t0, 2),
+                    "model": state.settings.model,
+                }
+            )
+
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
