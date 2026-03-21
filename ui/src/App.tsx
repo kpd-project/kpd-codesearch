@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Chat } from "@/components/chat";
 import { Repositories } from "@/components/repositories";
-import { useWebSocket, useStatus } from "@/hooks/use-api";
+import { useStatus } from "@/hooks/use-api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Circle, Settings, HelpCircle } from "lucide-react";
@@ -11,10 +11,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("chat");
-  const { connected } = useWebSocket();
-  const { status } = useStatus();
+  const { status, loading, refetch, wsConnected } = useStatus();
 
-  const isConnected = connected && status?.qdrant.connected;
+  const isConnected = wsConnected && status?.qdrant.connected;
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col bg-background text-foreground">
@@ -57,7 +56,7 @@ export default function App() {
 
         <TabsContent value="repositories" className="flex-1 m-0 min-h-0" keepMounted>
           <ScrollArea className="h-full min-h-0">
-            <Repositories />
+            <Repositories status={status} loading={loading} refetch={refetch} />
           </ScrollArea>
         </TabsContent>
       </main>
@@ -67,8 +66,8 @@ export default function App() {
         <span>Версия 2.0</span>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
-            <Circle className={`w-1.5 h-1.5 ${connected ? "fill-green-500 text-green-500" : "fill-red-500 text-red-500"}`} />
-            WS: {connected ? "подключён" : "отключён"}
+            <Circle className={`w-1.5 h-1.5 ${wsConnected ? "fill-green-500 text-green-500" : "fill-red-500 text-red-500"}`} />
+            WS: {wsConnected ? "подключён" : "отключён"}
           </span>
           <span className="flex items-center gap-1">
             <Circle className={`w-1.5 h-1.5 ${status?.qdrant.connected ? "fill-green-500 text-green-500" : "fill-red-500 text-red-500"}`} />

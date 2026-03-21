@@ -71,7 +71,8 @@ class State:
         self.qdrant_status: str = "disconnected"
         self.qdrant_client: QdrantClient | None = None
         self.start_time = datetime.now()
-        self.indexing_progress: dict[str, int] = {}
+        # repo -> { current, total, path, chunks, vectors, skipped }
+        self.indexing_progress: dict[str, dict] = {}
         self._repo_status: dict[str, str] = {}
 
     def get_qdrant(self) -> QdrantClient:
@@ -272,7 +273,7 @@ class State:
     def set_status(self, name: str, status: str):
         self._repo_status[name] = status
 
-    def update_indexing_progress(self, repo: str, progress: int):
+    def update_indexing_progress(self, repo: str, progress: dict):
         self.indexing_progress[repo] = progress
         self._repo_status[repo] = "indexing"
 

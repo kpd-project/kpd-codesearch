@@ -14,11 +14,21 @@ export interface Repo {
   embedder_dimension?: number | null;
 }
 
+/** Прогресс индексации: обработанные файлы относительно общего числа. */
+export interface IndexingProgressEntry {
+  current: number;
+  total: number;
+  path: string;
+  chunks: number;
+  vectors: number;
+  skipped: boolean;
+}
+
 export interface RepoStatus {
   qdrant: { status: string; connected: boolean };
   repos: Repo[];
   settings: Settings;
-  indexing_progress: Record<string, number>;
+  indexing_progress: Record<string, IndexingProgressEntry>;
   uptime: string;
 }
 
