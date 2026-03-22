@@ -16,13 +16,12 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "semantic_search",
+            "name": "search_code",
             "description": (
-                "СЕМАНТИЧЕСКИЙ (векторный) поиск по коду репозиториев — ищет по смыслу, а не по тексту. "
-                "Запрос должен быть осмысленной фразой (например: «логика отрисовки штампов на PDF странице»). "
-                "НЕЛЬЗЯ: регулярные выражения, пути к файлам, одиночные слова. "
+                "Поиск по проиндексированным репозиториям. "
                 "Можно искать в конкретном репо или по всем сразу. "
-                "Вызывай несколько раз с разными формулировками — разные фразы ловят разный контент."
+                "Вызывай несколько раз с разными формулировками запроса для лучшего результата. "
+                "Для широких вопросов используй top_k ближе к максимуму — вернётся больше релевантных сниппетов (код полный, без обрезки)."
             ),
             "parameters": {
                 "type": "object",
@@ -67,31 +66,6 @@ TOOLS = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": (
-                "Прочитать полное содержимое конкретного файла. "
-                "Используй ТОЛЬКО если точно знаешь путь к файлу (например, из результатов search_code). "
-                "Не используй search_code для чтения файлов — это разные инструменты."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "repo": {
-                        "type": "string",
-                        "description": "Название репозитория (из list_indexed_repos)",
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "Точный путь к файлу (например, src/draw/index.ts)",
-                    },
-                },
-                "required": ["repo", "path"],
-            },
-        },
-    },
 ]
 
 
@@ -105,7 +79,7 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
             return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."
         return f"Проиндексированы: {', '.join(indexed)}"
 
-    if name == "semantic_search":
+    if name == "search_code":
         query = args.get("query", "")
         repo = args.get("repo")
         top_k = min(int(args.get("top_k", config.RAG_SEARCH_TOP_K)), config.RAG_SEARCH_TOP_K_MAX)
@@ -141,38 +115,6 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
             parts.append(f"[score={score:.2f}] {repo_name}: {path}{type_hint}\n{content}")
 
         return "\n\n---\n\n".join(parts)
-
-    if name == "read_file":
-        repo = args.get("repo", "").strip()
-        path = args.get("path", "").strip()
-        if not repo or not path:
-            return "Ошибка: укажи repo и path."
-        if on_status:
-            on_status(f"📄 Читаю {path} из {repo}…")
-
-        # 1. Сначала пробуем прочитать с диска (быстро и полно)
-        try:
-            file_path = config.REPOS_BASE_PATH / repo / path.lstrip("/").replace("\\", "/")
-            if file_path.exists() and file_path.is_file():
-                content = file_path.read_text(encoding="utf-8")
-                if len(content) > 15000:
-                    content = content[:15000] + "\n...(обрезано, файл слишком большой)..."
-                return f"Содержимое {path} (с диска):\n```\n{content}\n```"
-        except Exception as e:
-            logger.warning("Не удалось прочитать с диска %s/%s: %s", repo, path, e)
-
-        # 2. Fallback: диск недоступен — достаем чанки из Qdrant
-        try:
-            from .retriever import get_file_from_qdrant
-            qdrant_content = get_file_from_qdrant(repo, path)
-            if qdrant_content:
-                if len(qdrant_content) > 15000:
-                    qdrant_content = qdrant_content[:15000] + "\n...(обрезано)..."
-                return f"Содержимое {path} (восстановлено из Qdrant):\n```\n{qdrant_content}\n```"
-        except Exception as e:
-            logger.error("Ошибка чтения %s/%s из Qdrant: %s", repo, path, e)
-
-        return f"Файл {path} не найден ни на диске, ни в векторной базе."
 
     return f"Неизвестный инструмент: {name}"
 
@@ -308,46 +250,6 @@ RAG_CONTEXT_SYSTEM = (
     "Ответ в Markdown."
 )
 
-_REWRITE_SYSTEM = (
-    "Ты помощник по поиску в кодовой базе. "
-    "Получаешь вопрос пользователя и возвращаешь ТОЛЬКО 2-4 ключевых слова/термина на английском "
-    "для поиска по коду (названия функций, классов, методов, паттернов). "
-    "Без объяснений, только слова через пробел."
-)
-
-
-def _rewrite_query_for_search(question: str, model: str, timeout: int) -> str:
-    """Быстрое переписывание вопроса в ключевые слова для векторного поиска.
-
-    При ошибке — возвращает исходный вопрос как fallback.
-    """
-    try:
-        response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": _REWRITE_SYSTEM},
-                    {"role": "user", "content": question},
-                ],
-                "max_tokens": 60,
-                "temperature": 0.0,
-            },
-            timeout=timeout,
-        )
-        if response.status_code == 200:
-            content = response.json()["choices"][0]["message"].get("content", "").strip()
-            if content:
-                logger.debug("Query rewrite: %r -> %r", question[:80], content)
-                return content
-    except Exception as e:
-        logger.warning("Query rewrite failed, fallback to original: %s", e)
-    return question
-
 
 async def generate_response(
     query: str,
@@ -355,11 +257,7 @@ async def generate_response(
     model: str | None = None,
     temperature: float = 0.1,
 ):
-    """Стриминг ответа LLM по контексту (для Web API).
-
-    Последним элементом генератора выдаёт dict ``{"__usage__": {...}}``
-    с данными о потреблении токенов (если провайдер их вернул).
-    """
+    """Стриминг ответа LLM по контексту (для Web API)."""
     model = model or config.OPENROUTER_MODEL
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
@@ -367,7 +265,6 @@ async def generate_response(
     )
     prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
 
-    usage: dict = {}
     async with httpx.AsyncClient(timeout=60.0) as client:
         async with client.stream(
             "POST",
@@ -383,7 +280,6 @@ async def generate_response(
                     {"role": "user", "content": prompt},
                 ],
                 "stream": True,
-                "stream_options": {"include_usage": True},
                 "temperature": temperature,
                 "max_tokens": 4000,
             },
@@ -394,15 +290,12 @@ async def generate_response(
                 if line.startswith("data: ") and line != "data: [DONE]":
                     try:
                         data = json.loads(line[6:])
-                        if data.get("usage"):
-                            usage = data["usage"]
                         delta = data.get("choices", [{}])[0].get("delta", {})
                         content = delta.get("content")
                         if content:
                             yield content
                     except json.JSONDecodeError:
                         pass
-    yield {"__usage__": usage}
 
 
 def generate_simple_answer(
@@ -414,25 +307,19 @@ def generate_simple_answer(
     model: str | None = None,
     temperature: float = 0.1,
     on_status=None,
-    rewrite_model: str | None = None,
 ) -> tuple[str, dict]:
-    """Синхронный простой RAG: Query Rewriting → один векторный поиск → один ответ LLM."""
+    """Синхронный простой RAG: один векторный поиск + один ответ LLM (без агента)."""
     from .retriever import search_all_repos, search_in_repo
 
     if on_status:
         on_status("🔍 Ищу фрагменты кода…")
 
-    # Query Rewriting: переписываем вопрос в ключевые слова для векторного поиска.
-    # Дешевая/быстрая модель извлекает технические термины — вектор совпадет с чанками кода.
-    rw_model = rewrite_model or config.SIMPLE_REWRITE_MODEL
-    search_query = _rewrite_query_for_search(question, rw_model, timeout=config.RAG_AGENT_TIMEOUT)
-
     if repo_name:
-        chunks = search_in_repo(repo_name, search_query, top_k)
+        chunks = search_in_repo(repo_name, question, top_k)
         for c in chunks:
             c["repo"] = repo_name
     else:
-        chunks = search_all_repos(search_query, top_k)
+        chunks = search_all_repos(question, top_k)
 
     chunks = chunks[:max_chunks]
 

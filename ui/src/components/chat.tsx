@@ -18,7 +18,6 @@ interface AnswerFooterMeta {
     tool_calls_count: number;
     /** Ключ записи в IndexedDB (полный JSON лога) */
     log_id: string;
-    rag_mode?: 'simple' | 'agent';
 }
 
 interface Message {
@@ -30,7 +29,7 @@ interface Message {
 }
 
 /** Один локальный чат; версия ключа — при смене формата данных. */
-const CHAT_STORAGE_KEY = 'astra-m-codesearch-chat-messages-v5';
+const CHAT_STORAGE_KEY = 'kpd-codesearch-chat-messages-v5';
 
 function isAnswerFooterMeta(v: unknown): v is AnswerFooterMeta {
     if (v == null || typeof v !== 'object') return false;
@@ -48,11 +47,6 @@ function isAnswerFooterMeta(v: unknown): v is AnswerFooterMeta {
 function formatTokenLine(n: number): string {
     return n > 0 ? n.toLocaleString('ru-RU') : '—';
 }
-
-const RAG_MODE_LABEL: Record<string, string> = {
-    simple: 'Простой',
-    agent: 'Агентный',
-};
 
 function loadMessagesFromStorage(): Message[] {
     if (typeof window === 'undefined') return [];
@@ -208,7 +202,6 @@ export function Chat({ className }: ChatProps) {
                         duration_s?: number;
                         usage?: Record<string, unknown>;
                         tool_calls_count?: number;
-                        rag_mode?: 'simple' | 'agent';
                         session_log?: Record<string, unknown>;
                     };
                     if (parsed.error) {
@@ -242,7 +235,6 @@ export function Chat({ className }: ChatProps) {
                                 total_tokens: tt,
                                 tool_calls_count: Number(parsed.tool_calls_count ?? 0),
                                 log_id: logId,
-                                rag_mode: parsed.rag_mode,
                             };
                             setMessages((prev) => {
                                 const last = prev[prev.length - 1];
@@ -385,11 +377,6 @@ export function Chat({ className }: ChatProps) {
                                             <>
                                                 <Bot className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
                                                 <span>Ассистент</span>
-                                                {msg.answerFooter?.rag_mode && (
-                                                    <span className="font-normal text-muted-foreground/70">
-                                                        — {RAG_MODE_LABEL[msg.answerFooter.rag_mode] ?? msg.answerFooter.rag_mode}
-                                                    </span>
-                                                )}
                                             </>
                                         )}
                                     </span>

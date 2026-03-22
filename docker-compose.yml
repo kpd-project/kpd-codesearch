@@ -1,48 +1,13 @@
-# ASTRA-M — Telegram RAG-бот и веб-интерфейс
-# Запуск всего стека: docker compose up -d (нужны и qdrant, и astra-m).
-# Имя проекта в Docker (вместо имени папки kpd-codesearch).
-name: astra-m
-
+# LCPRO — автозапуск Telegram RAG-бота
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: astra-m-qdrant
-    restart: unless-stopped
-    ports:
-      # Опционально с хоста: http://localhost:6333/dashboard
-      - "6333:6333"
-    volumes:
-      - astra-m-qdrant-storage:/qdrant/storage
-
-  astra-m:
+  lcpro:
     build: .
-    image: astra-m-codesearch:latest
-    container_name: astra-m-codesearch
+    image: lcpro-bot:latest
+    container_name: lcpro
     restart: unless-stopped
     env_file: .env
-    depends_on:
-      - qdrant
     environment:
       REPOS_BASE_PATH: /repos
-      # По умолчанию — Qdrant из этого compose (сервис qdrant). Иначе: QDRANT_DOCKER_URL в .env.
-      QDRANT_URL: "${QDRANT_DOCKER_URL:-http://qdrant:6333}"
-    ports:
-      # Веб UI (FastAPI + статика): http://localhost:8000
-      - "8000:8000"
     volumes:
-      # Клоны репозиториев с хоста (путь в .env → внутри контейнера /repos, только чтение)
-      - ${REPOS_BASE_PATH:-d:/astra-m-project}:/repos:ro
-      # Именованные тома ASTRA-M (видны в `docker volume ls` по фиксированным именам):
-      #   astra-m-index-state — прогресс/состояние индексации (.index_state)
-      #   astra-m-session-logs — логи сессий бота (logs/)
-      # Не теряются при пересборке образа; удалять только осознанно.
-      - astra-m-index-state:/app/.index_state
-      - astra-m-session-logs:/app/logs
-
-volumes:
-  astra-m-qdrant-storage:
-    name: astra-m-qdrant-storage
-  astra-m-index-state:
-    name: astra-m-index-state
-  astra-m-session-logs:
-    name: astra-m-session-logs
+      # Монтируем репозитории KPD (путь с хоста → в контейнере)
+      - ${REPOS_BASE_PATH:-d:/kpd-project}:/repos:ro

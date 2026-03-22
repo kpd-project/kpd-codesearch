@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 import config
-from .schemas import AnalystResponse, SearchQuery, SearchResult
+from .schemas import AnalystResponse, SearchQuery, SearchResult, SummarizedContext
 from ..retriever import search_in_repo, search_all_repos
 
 logger = logging.getLogger(__name__)
@@ -104,3 +104,84 @@ class AnalystAgent:
                 unique_results[key] = r
         
         return sorted(unique_results.values(), key=lambda x: x.score, reverse=True)
+
+    def summarize(self, results: list[SearchResult], question: str) -> SummarizedContext:
+        if not results:
+            return SummarizedContext(
+                summary="Ничего не найдено.",
+                citations=[],
+                files_involved=[],
+                confidence=0.0
+            )
+        
+        context_parts = []
+        files = set()
+        
+        for i, r in enumerate(results[:15], 1):
+            content = r.content
+            if config.RAG_CHUNK_DISPLAY_CHARS > 0:
+                content = content[:config.RAG_CHUNK_DISPLAY_CHARS]
+            
+            type_hint = f" [{r.type}]" if r.type else ""
+            context_parts.append(f"[{i}] {r.repo}: {r.path}{type_hint} (score={r.score:.2f})\n{content}")
+            files.add(f"{r.repo}:{r.path}")
+        
+        context_text = "\n\n---\n\n".join(context_parts)
+        
+        summarize_prompt = f"""Проанализируй найденный контекст и подготовь сжатую сводку для ответа пользователю.
+
+Вопрос: {question}
+
+Найденный контекст:
+{context_text}
+
+Выведи JSON:
+{{
+  "summary": "сжатое описание что найдено и как это отвечает на вопрос",
+  "citations": ["ключевая цитата 1", "ключевая цитата 2"],
+  "confidence": 0.8
+}}
+
+Важно: только валидный JSON, без markdown."""
+
+        response = requests.post(
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "messages": [{"role": "user", "content": summarize_prompt}],
+                "max_tokens": config.ANALYST_MAX_TOKENS,
+                "temperature": 0.3,
+            },
+            timeout=self.timeout,
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"Summarize API error: {response.status_code}")
+            return SummarizedContext(
+                summary=f"Найдено {len(results)} результатов",
+                citations=[r.content[:200] for r in results[:3]],
+                files_involved=list(files),
+                confidence=0.5
+            )
+        
+        content = response.json()["choices"][0]["message"].get("content", "")
+        
+        try:
+            parsed = json.loads(content)
+            return SummarizedContext(
+                summary=parsed.get("summary", ""),
+                citations=parsed.get("citations", []),
+                files_involved=list(files),
+                confidence=parsed.get("confidence", 0.7),
+            )
+        except json.JSONDecodeError:
+            return SummarizedContext(
+                summary=content[:500],
+                citations=[r.content[:200] for r in results[:3]],
+                files_involved=list(files),
+                confidence=0.5
+            )
