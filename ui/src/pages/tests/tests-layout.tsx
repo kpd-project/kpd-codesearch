@@ -1,12 +1,15 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VectorSearchTest } from "./vector-search-test";
+import { ChunkFileTest } from "./chunk-file-test";
 
 const TEST_TABS = [
   { value: "vector-search", label: "Поиск по векторам" },
+  { value: "file-chunks", label: "Чанки файла" },
 ];
 
 function getActiveTest(pathname: string): string {
+  if (pathname.includes("file-chunks")) return "file-chunks";
   if (pathname.includes("vector-search")) return "vector-search";
   return "vector-search";
 }
@@ -38,6 +41,9 @@ export function TestsLayout() {
 
       <TabsContent value="vector-search" className="flex-1 m-0 min-h-0 overflow-auto">
         <VectorSearchTest />
+      </TabsContent>
+      <TabsContent value="file-chunks" className="flex-1 m-0 min-h-0 overflow-hidden">
+        <ChunkFileTest />
       </TabsContent>
     </Tabs>
   );
