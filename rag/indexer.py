@@ -118,8 +118,9 @@ async def index_repo_async(
 
     log(f"\n[reindex] {repo_name}")
     create_collection(repo_name)
+    embedder_model = config.EMBEDDINGS_MODEL.rsplit("/", 1)[-1] if "/" in config.EMBEDDINGS_MODEL else config.EMBEDDINGS_MODEL
     set_collection_properties(repo_name, {
-        "embedder_model": config.EMBEDDINGS_MODEL,
+        "embedder_model": embedder_model,
         "embedder_dimension": config.EMBEDDINGS_DIMENSION,
     })
 
