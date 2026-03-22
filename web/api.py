@@ -510,7 +510,7 @@ async def query(request: QueryRequest):
                         "rag_mode": state.settings.rag_mode,
                     }
                     log_entry.update(session_data)
-                    yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
                     yield "data: [DONE]\n\n"
                     return
 
@@ -556,7 +556,7 @@ async def query(request: QueryRequest):
                     "rag_mode": state.settings.rag_mode,
                 }
                 log_entry.update(session_data)
-                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': 0, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 logger.error(f"Simple query failed: {e}")
@@ -641,7 +641,7 @@ async def query(request: QueryRequest):
             }
             log_entry.update(session_data)
 
-            yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': tool_calls_count, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': tool_calls_count, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
