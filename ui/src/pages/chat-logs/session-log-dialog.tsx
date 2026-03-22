@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { formatPayloadAsJson, JsonHighlighter } from "./json-log-view";
 import { SessionLogChatView } from "./session-log-chat-view";
 
-const SESSION_LOG_DIALOG_UI_KEY = "astra-m-codesearch-session-log-dialog-ui-v1";
+const SESSION_LOG_DIALOG_UI_KEY = "kpd-codesearch-session-log-dialog-ui-v1";
 
 function loadSessionLogDialogUi(): {
   expanded: boolean;

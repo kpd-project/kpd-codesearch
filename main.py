@@ -91,7 +91,7 @@ def run_web():
 def main():
     """Run both Telegram bot and Web UI."""
     logger.info("=" * 50)
-    logger.info("ASTRA-M — Starting all services")
+    logger.info("KPD CodeSearch - Starting all services")
     logger.info("=" * 50)
     
     # Start Telegram in a separate thread

@@ -1,6 +1,6 @@
 /** Отдельное хранилище полных JSON логов сессий (не в localStorage с чатом). */
 
-const DB_NAME = "astra-m-codesearch-session-logs";
+const DB_NAME = "kpd-codesearch-session-logs";
 const DB_VERSION = 1;
 const STORE = "sessions";
 

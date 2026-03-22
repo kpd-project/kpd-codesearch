@@ -1,6 +1,5 @@
 import asyncio
 from qdrant_client import QdrantClient
-from qdrant_client.http import models as qdrant_models
 import config
 from .embeddings import get_embeddings
 from .qdrant_client import get_client, collection_exists, list_collections
@@ -51,50 +50,6 @@ def search_all_repos(query: str, top_k: int = 3, min_score: float | None = None)
     
     all_results.sort(key=lambda x: x["score"], reverse=True)
     return all_results[:config.RAG_SEARCH_ALL_LIMIT]
-
-
-def get_file_from_qdrant(repo_name: str, file_path: str) -> str:
-    """Восстанавливает содержимое файла из Qdrant по точному пути.
-
-    Используется как фоллбек когда локальный диск (REPOS_BASE_PATH) недоступен.
-    Достает все чанки файла через payload-фильтр по полю path и склеивает их.
-    """
-    if not collection_exists(repo_name):
-        return ""
-
-    client = get_client()
-    # Нормализуем путь: убираем ведущий слеш и заменяем Windows-разделители
-    normalized_path = file_path.lstrip("/").replace("\\", "/")
-
-    scroll_result = client.scroll(
-        collection_name=repo_name,
-        scroll_filter=qdrant_models.Filter(
-            must=[
-                qdrant_models.FieldCondition(
-                    key="path",
-                    match=qdrant_models.MatchValue(value=normalized_path),
-                )
-            ]
-        ),
-        limit=200,
-        with_payload=True,
-        with_vectors=False,
-    )
-
-    points = scroll_result[0]
-    if not points:
-        return ""
-
-    # Очищаем заголовок пути, который добавляет indexer.py в виде "repo/path\n..."
-    prefix = f"{repo_name}/{normalized_path}"
-    cleaned_parts = []
-    for p in points:
-        raw = p.payload.get("content", "")
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):].lstrip("\n")
-        cleaned_parts.append(raw)
-
-    return "\n...\n".join(cleaned_parts)
 
 
 async def search_code(

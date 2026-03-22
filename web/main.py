@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    logger.info("Starting ASTRA-M Web UI...")
+    logger.info("Starting KPD CodeSearch Web UI...")
     
     # Проверяем подключение к Qdrant (repo-данные хранятся в Qdrant и читаются по запросу)
     state.check_qdrant()
@@ -34,8 +34,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="ASTRA-M",
-    description="Web interface for ASTRA-M CodeSearch",
+    title="KPD CodeSearch",
+    description="Web interface for KPD CodeSearch",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -92,7 +92,7 @@ async def root():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ASTRA-M</title>
+        <title>KPD CodeSearch</title>
         <style>
             body { font-family: system-ui; background: #1a1b26; color: #c0caf5; 
                    display: flex; justify-content: center; align-items: center; 
@@ -104,7 +104,7 @@ async def root():
     </head>
     <body>
         <div class="container">
-            <h1>ASTRA-M Web UI</h1>
+            <h1>KPD CodeSearch Web UI</h1>
             <p>Build the frontend first: <code>cd ui && npm run build</code></p>
             <p>Then restart the server.</p>
         </div>

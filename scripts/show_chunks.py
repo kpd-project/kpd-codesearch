@@ -13,7 +13,7 @@ import config
 from rag.chunker import chunk_file
 
 # Небольшой файл — показываем целиком все чанки
-REPO = "pdf-2"
+REPO = "kpd-pdf-2"
 FILE = "src/queue/worker.ts"
 
 
