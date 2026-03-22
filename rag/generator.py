@@ -3,7 +3,7 @@ import logging
 import requests
 import httpx
 import config
-from .retriever import search_all_repos, search_in_repo
+from .retriever import search_all_repos, search_in_repo, get_file_from_qdrant
 from .qdrant_client import collection_exists, list_collections
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,31 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": (
+                "Прочитать полное содержимое конкретного файла. "
+                "Используй ТОЛЬКО если точно знаешь путь к файлу (например, из результатов semantic_search). "
+                "Не используй semantic_search для чтения файлов — это разные инструменты."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Название репозитория (из list_indexed_repos)",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Точный путь к файлу (например, src/draw/index.ts)",
+                    },
+                },
+                "required": ["repo", "path"],
+            },
+        },
+    },
 ]
 
 
@@ -115,6 +140,35 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
             parts.append(f"[score={score:.2f}] {repo_name}: {path}{type_hint}\n{content}")
 
         return "\n\n---\n\n".join(parts)
+
+    if name == "read_file":
+        repo = args.get("repo", "").strip()
+        path = args.get("path", "").strip()
+        if not repo or not path:
+            return "Ошибка: укажи repo и path."
+        if on_status:
+            on_status(f"📄 Читаю {path} из {repo}…")
+
+        try:
+            file_path = config.REPOS_BASE_PATH / repo / path.lstrip("/").replace("\\", "/")
+            if file_path.exists() and file_path.is_file():
+                content = file_path.read_text(encoding="utf-8")
+                if len(content) > 15000:
+                    content = content[:15000] + "\n...(обрезано, файл слишком большой)..."
+                return f"Содержимое {path} (с диска):\n```\n{content}\n```"
+        except Exception as e:
+            logger.warning("Не удалось прочитать с диска %s/%s: %s", repo, path, e)
+
+        try:
+            qdrant_content = get_file_from_qdrant(repo, path)
+            if qdrant_content:
+                if len(qdrant_content) > 15000:
+                    qdrant_content = qdrant_content[:15000] + "\n...(обрезано)..."
+                return f"Содержимое {path} (восстановлено из Qdrant):\n```\n{qdrant_content}\n```"
+        except Exception as e:
+            logger.error("Ошибка чтения %s/%s из Qdrant: %s", repo, path, e)
+
+        return f"Файл {path} не найден ни на диске, ни в векторной базе."
 
     return f"Неизвестный инструмент: {name}"
 
