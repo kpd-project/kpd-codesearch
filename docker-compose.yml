@@ -1,13 +1,34 @@
 # ASTRA-M — Telegram RAG-бот и веб-интерфейс
+# Запуск всего стека: docker compose up -d (нужны и qdrant, и astra-m).
+# Имя проекта в Docker (вместо имени папки kpd-codesearch).
+name: astra-m
+
 services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: astra-m-qdrant
+    restart: unless-stopped
+    ports:
+      # Опционально с хоста: http://localhost:6333/dashboard
+      - "6333:6333"
+    volumes:
+      - astra-m-qdrant-storage:/qdrant/storage
+
   astra-m:
     build: .
     image: astra-m-codesearch:latest
     container_name: astra-m-codesearch
     restart: unless-stopped
     env_file: .env
+    depends_on:
+      - qdrant
     environment:
       REPOS_BASE_PATH: /repos
+      # По умолчанию — Qdrant из этого compose (сервис qdrant). Иначе: QDRANT_DOCKER_URL в .env.
+      QDRANT_URL: "${QDRANT_DOCKER_URL:-http://qdrant:6333}"
+    ports:
+      # Веб UI (FastAPI + статика): http://localhost:8000
+      - "8000:8000"
     volumes:
       # Клоны репозиториев с хоста (путь в .env → внутри контейнера /repos, только чтение)
       - ${REPOS_BASE_PATH:-d:/astra-m-project}:/repos:ro
@@ -19,6 +40,8 @@ services:
       - astra-m-session-logs:/app/logs
 
 volumes:
+  astra-m-qdrant-storage:
+    name: astra-m-qdrant-storage
   astra-m-index-state:
     name: astra-m-index-state
   astra-m-session-logs:
