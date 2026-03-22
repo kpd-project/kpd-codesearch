@@ -297,7 +297,11 @@ async def generate_response(
     model: str | None = None,
     temperature: float = 0.1,
 ):
-    """Стриминг ответа LLM по контексту (для Web API)."""
+    """Стриминг ответа LLM по контексту (для Web API).
+
+    Последним элементом генератора выдаёт dict ``{"__usage__": {...}}``
+    с данными о потреблении токенов (если провайдер их вернул).
+    """
     model = model or config.OPENROUTER_MODEL
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
@@ -305,6 +309,7 @@ async def generate_response(
     )
     prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
 
+    usage: dict = {}
     async with httpx.AsyncClient(timeout=60.0) as client:
         async with client.stream(
             "POST",
@@ -320,6 +325,7 @@ async def generate_response(
                     {"role": "user", "content": prompt},
                 ],
                 "stream": True,
+                "stream_options": {"include_usage": True},
                 "temperature": temperature,
                 "max_tokens": 4000,
             },
@@ -330,12 +336,15 @@ async def generate_response(
                 if line.startswith("data: ") and line != "data: [DONE]":
                     try:
                         data = json.loads(line[6:])
+                        if data.get("usage"):
+                            usage = data["usage"]
                         delta = data.get("choices", [{}])[0].get("delta", {})
                         content = delta.get("content")
                         if content:
                             yield content
                     except json.JSONDecodeError:
                         pass
+    yield {"__usage__": usage}
 
 
 def generate_simple_answer(
