@@ -305,9 +305,8 @@ class State:
         self.indexing_progress.pop(repo, None)
         self._repo_status.pop(repo, None)
         metadata = get_metadata(repo)
-        metadata["last_indexed"] = datetime.now().isoformat()
-        # Фиксируем эмбедер, с которым был построен индекс (для прозрачности в UI/метаданных).
-        metadata["embedder_model"] = config.EMBEDDINGS_MODEL
+        embedder_model = config.EMBEDDINGS_MODEL.rsplit("/", 1)[-1] if "/" in config.EMBEDDINGS_MODEL else config.EMBEDDINGS_MODEL
+        metadata["embedder_model"] = embedder_model
         metadata["embedder_dimension"] = config.EMBEDDINGS_DIMENSION
         if indexed_path:
             metadata["indexed_path"] = indexed_path
@@ -315,7 +314,7 @@ class State:
         set_collection_properties(
             repo,
             {
-                "embedder_model": config.EMBEDDINGS_MODEL,
+                "embedder_model": embedder_model,
                 "embedder_dimension": config.EMBEDDINGS_DIMENSION,
             },
         )
