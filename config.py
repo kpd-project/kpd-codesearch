@@ -67,7 +67,7 @@ EMBEDDINGS_DIMENSION = int(os.getenv("EMBEDDINGS_DIMENSION", "1536"))
 QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.gotskin.ru")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/kpd-project"))
+REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/projects"))
 
 CHUNK_SIZE = 1500
 

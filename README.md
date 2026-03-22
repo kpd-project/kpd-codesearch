@@ -1,4 +1,4 @@
-# KPD RAG Bot
+# ASTRA-M RAG Bot
 
 Telegram-бот и веб-интерфейс для ответов на вопросы о коде с использованием RAG.
 
@@ -51,7 +51,7 @@ Telegram-бот и веб-интерфейс для ответов на вопр
 
 ```bash
 git clone <repo-url>
-cd kpd-codesearch
+cd astra-m-codesearch
 pip install -r requirements.txt
 ```
 
@@ -78,7 +78,7 @@ QDRANT_URL=https://qdrant.gotskin.ru
 QDRANT_API_KEY=your_qdrant_key
 
 # Repos (список репо — в Qdrant / UI, не в .env)
-REPOS_BASE_PATH=d:/kpd-project
+REPOS_BASE_PATH=d:/astra-m-project
 
 # Режимы
 USE_TWO_AGENT_PIPELINE=true
@@ -114,7 +114,7 @@ python main.py
 ## Структура проекта
 
 ```
-kpd-codesearch/
+astra-m-codesearch/
 ├── .env.example
 ├── whitelist.json        # Whitelist (опционально)
 ├── requirements.txt

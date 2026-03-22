@@ -1,8 +1,8 @@
-# KPD CodeSearch — Project Business Card
+# ASTRA-M CodeSearch — Project Business Card
 
 ## 📌 Overview
 
-**KPD CodeSearch** — интеллектуальная система поиска и анализа кода в репозиториях KPD-проекта с использованием RAG (Retrieval-Augmented Generation). Предоставляет ответы на вопросы по коду через Telegram-бота и веб-интерфейс.
+**ASTRA-M CodeSearch** — интеллектуальная система поиска и анализа кода в репозиториях проекта ASTRA-M с использованием RAG (Retrieval-Augmented Generation). Предоставляет ответы на вопросы по коду через Telegram-бота и веб-интерфейс.
 
 ---
 
@@ -14,7 +14,7 @@
 
 ## 👥 Целевая аудитория
 
-- Разработчики KPD-команды (backend, frontend, SE)
+- Разработчики команды ASTRA-M (backend, frontend, SE)
 - Технические лиды и архитекторы
 - Новые члены команды (onboarding)
 
@@ -24,7 +24,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     KPD CodeSearch System                       │
+│                     ASTRA-M CodeSearch System                       │
 │                                                                 │
 │  ┌─────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
 │  │  Telegram   │    │   Web Browser   │    │  Docker Host    │  │
@@ -73,11 +73,11 @@
 
 | Репозиторий | Язык | Назначение |
 |-------------|------|------------|
-| kpd-backend | Java/Spring Boot | Бэкенд API |
-| kpd-frontend | React/Vite | Веб-интерфейс |
-| kpd-se | TypeScript | WYSIWYG редактор |
-| kpd-landing | HTML/JS | Лендинг |
-| kpd-pdf-2 | Python/JS | PDF сервис |
+| backend | Java/Spring Boot | Бэкенд API |
+| frontend | React/Vite | Веб-интерфейс |
+| se | TypeScript | WYSIWYG редактор |
+| landing | HTML/JS | Лендинг |
+| pdf-2 | Python/JS | PDF сервис |
 
 ---
 
@@ -176,7 +176,7 @@ docker-compose up -d
 
 ## 📞 Контакты
 
-- **Репозиторий:** `kpd-codesearch`
+- **Репозиторий:** `astra-m-codesearch`
 - **Владелец:** [Team Lead]
 - **Документация:** `/README.md`, `/AGENTS.md`
 

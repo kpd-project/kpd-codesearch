@@ -2,39 +2,27 @@
 
 ## ЦЕЛЬ ПРОЕКТА
 
-Создание Telegram-бота и веб-интерфейса для закрытого чата: ответы на вопросы о коде из репозиториев KPD-проекта с использованием RAG.
+Создание Telegram-бота и веб-интерфейса для закрытого чата: ответы на вопросы о коде из репозиториев проекта ASTRA-M с использованием RAG.
 
 ---
 
 ## ТЕХНОЛОГИЧЕСКИЙ СТЕК
 
-| Компонент | Технология |
-|-----------|------------|
-| Bot | python-telegram-bot (polling) |
-| Web | FastAPI + uvicorn, фронт в `ui/` (Vite/React) |
-| Vector DB | Qdrant (remote: qdrant.gotskin.ru) |
-| Embeddings | `openai/text-embedding-3-small` (через OpenRouter) |
-| LLM | задаётся в `.env` / Web UI: по умолчанию в коде `google/gemini-2.5-flash-preview` (simple-ветка); Two-Agent — GLM-4 (Analyst/Answerer) через OpenRouter |
-| Chunking | Tree-sitter (`treesitter-chunker`) + построчный fallback |
-
----
-
-## РЕПОЗИТОРИИ ДЛЯ ИНДЕКСАЦИИ
-
-| Репозиторий | Путь | Назначение |
-|-------------|------|------------|
-| kpd-backend | `d:/kpd-project/kpd-backend` | Java/Spring Boot |
-| kpd-frontend | `d:/kpd-project/kpd-frontend` | React/Vite |
-| kpd-se | `d:/kpd-project/kpd-se` | WYSIWYG редактор |
-| kpd-landing | `d:/kpd-project/kpd-landing` | Лендинг |
-| kpd-pdf-2 | `d:/kpd-project/kpd-pdf-2` | PDF сервис |
+| Компонент  | Технология                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot        | python-telegram-bot (polling)                                                                                                                           |
+| Web        | FastAPI + uvicorn, фронт в `ui/` (Vite/React)                                                                                                           |
+| Vector DB  | Qdrant (remote: qdrant.gotskin.ru)                                                                                                                      |
+| Embeddings | `openai/text-embedding-3-small` (через OpenRouter)                                                                                                      |
+| LLM        | задаётся в `.env` / Web UI: по умолчанию в коде `google/gemini-2.5-flash-preview` (simple-ветка); Two-Agent — GLM-4 (Analyst/Answerer) через OpenRouter |
+| Chunking   | Tree-sitter (`treesitter-chunker`) + построчный fallback                                                                                                |
 
 ---
 
 ## СТРУКТУРА КОДА
 
 ```
-kpd-codesearch/
+astra-m-codesearch/
 ├── config.py              # Конфигурация из .env
 ├── main.py                # Точка входа: Telegram (thread) + Web (uvicorn :8000)
 ├── whitelist.json         # Whitelist пользователей (приоритет над .env, см. config.py)
@@ -73,17 +61,17 @@ User → Telegram или Web UI → RAG Pipeline → OpenRouter (LLM / embedding
 
 ## КОМАНДЫ БОТА
 
-| Команда | Описание | Реализация |
-|---------|----------|------------|
-| `/start` | Приветствие | `handlers.py:start_command` |
-| `/list` | Список репозиториев | `handlers.py:list_command` |
-| `/add <repo>` | Добавить + индекс | `handlers.py:add_command` |
-| `/remove <repo>` | Удалить | `handlers.py:remove_command` |
-| `/reindex <repo>` | Переиндексировать | `handlers.py:reindex_command` |
-| `/status` | Статус коллекций | `handlers.py:status_command` |
-| `/mode` | Two-Agent / Simple (в памяти до рестарта) | `handlers.py:mode_command` |
-| `/adduser`, `/removeuser`, `/listusers`, `/id` | Whitelist | `handlers.py` |
-| `<текст>` | Вопрос → RAG | `handlers.py:handle_message` |
+| Команда                                        | Описание                                  | Реализация                    |
+| ---------------------------------------------- | ----------------------------------------- | ----------------------------- |
+| `/start`                                       | Приветствие                               | `handlers.py:start_command`   |
+| `/list`                                        | Список репозиториев                       | `handlers.py:list_command`    |
+| `/add <repo>`                                  | Добавить + индекс                         | `handlers.py:add_command`     |
+| `/remove <repo>`                               | Удалить                                   | `handlers.py:remove_command`  |
+| `/reindex <repo>`                              | Переиндексировать                         | `handlers.py:reindex_command` |
+| `/status`                                      | Статус коллекций                          | `handlers.py:status_command`  |
+| `/mode`                                        | Two-Agent / Simple (в памяти до рестарта) | `handlers.py:mode_command`    |
+| `/adduser`, `/removeuser`, `/listusers`, `/id` | Whitelist                                 | `handlers.py`                 |
+| `<текст>`                                      | Вопрос → RAG                              | `handlers.py:handle_message`  |
 
 В группах ответ только при `@бот` или reply на сообщение бота.
 
@@ -93,10 +81,10 @@ User → Telegram или Web UI → RAG Pipeline → OpenRouter (LLM / embedding
 
 ### Telegram: `/mode`
 
-| Режим | Поведение |
-|-------|-----------|
-| **Two-Agent** | `rag/agent/pipeline.py`: Analyst → поиск → Answerer |
-| **Simple** | Если `RAG_RUNTIME_MODE=simple` — `generate_simple_answer`; иначе агентный `generator.py` |
+| Режим         | Поведение                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| **Two-Agent** | `rag/agent/pipeline.py`: Analyst → поиск → Answerer                                      |
+| **Simple**    | Если `RAG_RUNTIME_MODE=simple` — `generate_simple_answer`; иначе агентный `generator.py` |
 
 - Дефолт Two-Agent/Simple при старте: `USE_TWO_AGENT_PIPELINE` (`.env`).
 - Переключение `/mode` хранится в `context.bot_data` (in-memory, сбрасывается при перезапуске).
@@ -136,29 +124,6 @@ User → Telegram или Web UI → RAG Pipeline → OpenRouter (LLM / embedding
 - **Simple + agent**: `generator.py` (инструмент `search_code`).
 - **Simple + simple**: поиск + один ответ без tool-цикла.
 
----
-
-## НАСТРОЙКИ (.env)
-
-Полный шаблон и комментарии — `.env.example`. Минимальный набор:
-
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_WHITELIST_USERS=
-OPENROUTER_API_KEY=
-OPENROUTER_API_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL=google/gemini-2.5-flash-preview
-EMBEDDINGS_MODEL=openai/text-embedding-3-small
-EMBEDDINGS_DIMENSION=1536
-QDRANT_URL=https://qdrant.gotskin.ru
-QDRANT_API_KEY=
-REPOS_BASE_PATH=d:/kpd-project
-USE_TWO_AGENT_PIPELINE=true
-RAG_RUNTIME_MODE=agent
-```
-
----
-
 ## РАЗРАБОТКА
 
 ### Запуск
@@ -169,35 +134,6 @@ python main.py
 ```
 
 Веб: `http://localhost:8000`. Бот стартует в отдельном потоке, если задан `TELEGRAM_BOT_TOKEN`.
-
-### Docker
-
-```bash
-docker compose up -d --build
-```
-
-- `.env` из корня проекта.
-- В контейнере `REPOS_BASE_PATH` → `/repos`, на хост репозитории монтируются из пути в `.env`.
-- `restart: unless-stopped`.
-
-### При изменении кода
-
-1. Правки `.env` → перезапуск процесса/контейнера.
-2. Новый репозиторий → добавление через UI или `/add` (коллекции в Qdrant).
-3. Смена chunking / embedding-модели → переиндексация (`/reindex` или API).
-
-### Тесты и линтеры
-
-По желанию: pytest, ruff.
-
----
-
-## ПРИНЯТЫЕ РЕШЕНИЯ
-
-1. **Отдельные коллекции** — один репозиторий = одна коллекция в Qdrant.
-2. **OpenRouter** — единый API для embeddings и LLM.
-3. **Chunking** — Tree-sitter с fallback на построчный режим.
-4. **Whitelist** — `whitelist.json` с fallback на `TELEGRAM_WHITELIST_USERS` в `.env`.
 
 ---
 
