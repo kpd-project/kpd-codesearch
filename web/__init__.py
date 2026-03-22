@@ -1,1 +1,1 @@
-# KPD CodeSearch Web UI
+# ASTRA-M Web UI

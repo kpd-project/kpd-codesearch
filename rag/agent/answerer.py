@@ -4,11 +4,45 @@ import requests
 from pathlib import Path
 
 import config
-from .schemas import AnswererResponse, SearchQuery, SummarizedContext
+from .schemas import AnswererResponse, SearchResult
 
 logger = logging.getLogger(__name__)
 
 ANSWERER_PROMPT = (Path(__file__).parent.parent.parent / "prompts" / "answerer.txt").read_text(encoding="utf-8").strip()
+
+# Максимальное суммарное число символов для контекста, передаваемого Answerer.
+# ~4 символа ≈ 1 токен; 160k символов ≈ 40k токенов — достаточно для думающих моделей.
+_ANSWERER_CONTEXT_MAX_CHARS = 160_000
+
+
+def _build_context_text(search_results: list[SearchResult], question: str) -> str:
+    """Собирает контекст из сырых чанков кода для передачи Answerer'у.
+
+    Чанки передаются в полном виде (не суммаризированные), с указанием
+    репозитория, файла, типа и score. Общий объём ограничен, чтобы не
+    переполнить контекстное окно модели.
+    """
+    parts: list[str] = []
+    total_chars = 0
+    max_chars = _ANSWERER_CONTEXT_MAX_CHARS
+
+    for i, r in enumerate(search_results, 1):
+        content = r.content
+        if config.RAG_CHUNK_DISPLAY_CHARS > 0:
+            content = content[:config.RAG_CHUNK_DISPLAY_CHARS]
+        type_hint = f" [{r.type}]" if r.type else ""
+        chunk = (
+            f"[{i}] {r.repo}: {r.path}{type_hint} (score={r.score:.2f})\n"
+            f"```\n{content}\n```"
+        )
+        if total_chars + len(chunk) > max_chars:
+            parts.append(f"[{i}+] ... остальные фрагменты обрезаны (превышен лимит контекста)")
+            break
+        parts.append(chunk)
+        total_chars += len(chunk)
+
+    header = f"Вопрос пользователя: {question}\n\nФрагменты кода из репозиториев:\n"
+    return header + "\n\n---\n\n".join(parts)
 
 
 class AnswererAgent:
@@ -16,53 +50,53 @@ class AnswererAgent:
         self.model = config.ANSWERER_MODEL
         self.temperature = config.ANSWERER_TEMPERATURE
         self.max_tokens = config.ANSWERER_MAX_TOKENS
+        self.max_reasoning_tokens = config.ANSWERER_MAX_REASONING_TOKENS
         self.timeout = config.ANSWERER_TIMEOUT
 
     def answer(
         self,
         question: str,
-        summarized_context: SummarizedContext,
+        search_results: list[SearchResult],
         history: list[dict] | None = None,
         iteration: int = 1,
     ) -> tuple[AnswererResponse, dict]:
         messages = [{"role": "system", "content": ANSWERER_PROMPT}]
-        
+
         if history:
             for msg in history[-config.ANSWERER_HISTORY_LIMIT:]:
                 messages.append(msg)
-        
-        context_text = f"""Вопрос пользователя: {question}
 
-Найденный контекст:
-{summarized_context.summary}
-
-Затронутые файлы: {', '.join(summarized_context.files_involved)}
-
-Уверенность в релевантности: {summarized_context.confidence:.0%}
-
-Ключевые фрагменты:
-""" + "\n".join(f"- {c}" for c in summarized_context.citations[:5]) if summarized_context.citations else ""
-
+        context_text = _build_context_text(search_results, question)
         messages.append({"role": "user", "content": context_text})
-        
+
         if iteration > 1:
             messages.append({
                 "role": "user",
-                "content": f"Это попытка #{iteration}. Пожалуйста, либо дай ответ, либо запроси дополнительный поиск с уточнёнными запросами."
+                "content": (
+                    f"Это попытка #{iteration}. "
+                    "Пожалуйста, либо дай ответ на основе найденных фрагментов, "
+                    "либо запроси дополнительный поиск с уточнёнными запросами."
+                ),
             })
         
+        payload: dict = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+        }
+        # Ограничиваем "раздумья" для think-моделей (o3-mini, claude-3.7-sonnet и др.)
+        # через параметр max_completion_tokens OpenRouter (включает COT + итоговый ответ).
+        if self.max_reasoning_tokens > 0:
+            payload["max_completion_tokens"] = self.max_tokens + self.max_reasoning_tokens
+
         response = requests.post(
             f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
             headers={
                 "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self.model,
-                "messages": messages,
-                "max_tokens": self.max_tokens,
-                "temperature": self.temperature,
-            },
+            json=payload,
             timeout=self.timeout,
         )
         

@@ -1,8 +1,8 @@
-# KPD CodeSearch — Project Business Card
+# ASTRA-M CodeSearch — Project Business Card
 
 ## 📌 Overview
 
-**KPD CodeSearch** — интеллектуальная система поиска и анализа кода в репозиториях KPD-проекта с использованием RAG (Retrieval-Augmented Generation). Предоставляет ответы на вопросы по коду через Telegram-бота и веб-интерфейс.
+**ASTRA-M CodeSearch** — интеллектуальная система поиска и анализа кода в репозиториях проекта ASTRA-M с использованием RAG (Retrieval-Augmented Generation). Предоставляет ответы на вопросы по коду через Telegram-бота и веб-интерфейс.
 
 ---
 
@@ -14,7 +14,7 @@
 
 ## 👥 Целевая аудитория
 
-- Разработчики KPD-команды (backend, frontend, SE)
+- Разработчики команды ASTRA-M (backend, frontend, SE)
 - Технические лиды и архитекторы
 - Новые члены команды (onboarding)
 
@@ -24,7 +24,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     KPD CodeSearch System                       │
+│                     ASTRA-M CodeSearch System                       │
 │                                                                 │
 │  ┌─────────────┐    ┌─────────────────┐    ┌─────────────────┐  │
 │  │  Telegram   │    │   Web Browser   │    │  Docker Host    │  │
@@ -60,8 +60,8 @@
 | **Web Framework** | FastAPI | v0.100+ |
 | **Web Server** | uvicorn | v0.23+ |
 | **Vector DB** | Qdrant | Remote (qdrant.gotskin.ru) |
-| **Embeddings** | text-embedding-3-small | OpenRouter |
-| **LLM** | GLM-4 / Gemini 2.0 | OpenRouter |
+| **Embeddings** | openai/text-embedding-3-small | OpenRouter |
+| **LLM** | GLM-4 (Two-Agent), Gemini и др. (`.env`) | OpenRouter |
 | **Chunking** | treesitter-chunker | v2.0+ |
 | **Real-time** | WebSocket | Native |
 | **Containerization** | Docker + docker-compose | — |
@@ -73,11 +73,11 @@
 
 | Репозиторий | Язык | Назначение |
 |-------------|------|------------|
-| kpd-backend | Java/Spring Boot | Бэкенд API |
-| kpd-frontend | React/Vite | Веб-интерфейс |
-| kpd-se | TypeScript | WYSIWYG редактор |
-| kpd-landing | HTML/JS | Лендинг |
-| kpd-pdf-2 | Python/JS | PDF сервис |
+| backend | Java/Spring Boot | Бэкенд API |
+| frontend | React/Vite | Веб-интерфейс |
+| se | TypeScript | WYSIWYG редактор |
+| landing | HTML/JS | Лендинг |
+| pdf-2 | Python/JS | PDF сервис |
 
 ---
 
@@ -92,18 +92,26 @@
 | `/remove <repo>` | Удалить репозиторий |
 | `/reindex <repo>` | Переиндексировать |
 | `/status` | Статус коллекций |
+| `/mode` | Two-Agent / Simple (до рестарта) |
+| `/adduser`, `/removeuser`, `/listusers`, `/id` | Whitelist |
 | `<текст>` | RAG-запрос по коду |
 
 ### Web Interface
 | Endpoint | Метод | Описание |
 |----------|-------|----------|
 | `/` | GET | Веб-интерфейс (чат + управление) |
-| `/api/query` | POST | RAG-запрос |
+| `/api/query` | POST | RAG-запрос (SSE) |
 | `/api/repos` | GET | Список репозиториев |
-| `/api/repos/{name}` | POST | Добавить репозиторий |
+| `/api/repos/candidates` | GET | Кандидаты папок под `REPOS_BASE_PATH` |
+| `/api/repos` | POST | Добавить репозиторий |
 | `/api/repos/{name}` | DELETE | Удалить репозиторий |
 | `/api/repos/{name}/reindex` | POST | Переиндексировать |
+| `/api/repos/{name}/describe` | POST | Описание репо (LLM) |
 | `/api/status` | GET | Статус системы |
+| `/api/config` | GET | Runtime-настройки (модель, top_k, rag_mode) |
+| `/api/config/runtime` | PUT | Обновить runtime-настройки |
+| `/api/config/system` | GET | Системные параметры (маскированные секреты) |
+| `/api/health` | GET | Health check |
 | `/ws/state` | WebSocket | Real-time обновления статуса |
 
 ---
@@ -138,11 +146,11 @@ docker-compose up -d
 ## 📊 RAG Pipeline
 
 ```
-1. Chunking → Tree-sitter (семантические границы) + fallback (postрочно)
-2. Embeddings → text-embedding-3-small (1536 dim)
+1. Chunking → Tree-sitter (семантические границы) + fallback (построчно)
+2. Embeddings → openai/text-embedding-3-small (1536 dim)
 3. Storage → Qdrant (отдельная коллекция на репозиторий)
-4. Retrieval → Vector search (top_k=5)
-5. Generation → GLM-4 via OpenRouter
+4. Retrieval → Vector search (top_k из конфига RAG_SEARCH_TOP_K / лимиты в UI)
+5. Generation → Two-Agent (GLM-4) или simple/agent ветка (OpenRouter)
 ```
 
 ---
@@ -168,7 +176,7 @@ docker-compose up -d
 
 ## 📞 Контакты
 
-- **Репозиторий:** `kpd-codesearch`
+- **Репозиторий:** `astra-m-codesearch`
 - **Владелец:** [Team Lead]
 - **Документация:** `/README.md`, `/AGENTS.md`
 

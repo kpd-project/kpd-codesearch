@@ -510,7 +510,7 @@ async def query(request: QueryRequest):
                         "rag_mode": state.settings.rag_mode,
                     }
                     log_entry.update(session_data)
-                    yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
                     yield "data: [DONE]\n\n"
                     return
 
@@ -518,19 +518,29 @@ async def query(request: QueryRequest):
                 steps.append("✍️ Формирую ответ…")
 
                 parts: list[str] = []
+                usage: dict = {}
                 async for piece in generate_response(
                     request.message,
                     chunks,
                     model=state.settings.model,
                     temperature=state.settings.temperature,
                 ):
-                    parts.append(piece)
-                    yield f"data: {json.dumps({'content': piece}, ensure_ascii=False)}\n\n"
+                    if isinstance(piece, dict):
+                        usage = piece.get("__usage__") or {}
+                    else:
+                        parts.append(piece)
+                        yield f"data: {json.dumps({'content': piece}, ensure_ascii=False)}\n\n"
 
                 body = "".join(parts)
                 total_s = round(time.monotonic() - t0, 2)
-                steps.append(f"✅ Готово. {total_s} с.")
-                session_data = simple_session_metadata()
+                pt = usage.get("prompt_tokens") or 0
+                ct = usage.get("completion_tokens") or 0
+                tt = usage.get("total_tokens") or (pt + ct)
+                done_line = f"✅ Готово. {total_s} с."
+                if pt > 0 or ct > 0:
+                    done_line += f" Вход: {pt:,} ток., выход: {ct:,} ток., всего: {tt:,}"
+                steps.append(done_line)
+                session_data = simple_session_metadata(usage if usage else None)
                 session_data["model_primary"] = state.settings.model
                 log_entry = {
                     "ts": datetime.now(timezone.utc).isoformat(),
@@ -546,7 +556,7 @@ async def query(request: QueryRequest):
                     "rag_mode": state.settings.rag_mode,
                 }
                 log_entry.update(session_data)
-                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': 0, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 logger.error(f"Simple query failed: {e}")
@@ -631,7 +641,7 @@ async def query(request: QueryRequest):
             }
             log_entry.update(session_data)
 
-            yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': tool_calls_count, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': tool_calls_count, 'rag_mode': state.settings.rag_mode, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
 
             yield "data: [DONE]\n\n"
         except Exception as e:
