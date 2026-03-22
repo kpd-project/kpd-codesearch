@@ -1,7 +1,6 @@
 from urllib.parse import urlparse
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
-import httpx
 import config
 
 _client = None
@@ -10,7 +9,6 @@ def get_client() -> QdrantClient:
     global _client
     if _client is None:
         parsed = urlparse(config.QDRANT_URL)
-        # host + port + https вместо url — обход SSL-бага qdrant-client на Windows
         _client = QdrantClient(
             host=parsed.hostname,
             port=parsed.port or (443 if parsed.scheme == "https" else 80),
@@ -52,7 +50,6 @@ def get_collection_info(collection_name: str) -> dict:
     if not collection_exists(collection_name):
         return None
     info = client.get_collection(collection_name=collection_name)
-    # indexed_vectors_count может быть 0 при построении индекса — показываем points_count
     vec = getattr(info, "indexed_vectors_count", None)
     return {
         "name": collection_name,
@@ -64,41 +61,31 @@ def list_collections() -> list[str]:
     client = get_client()
     return [c.name for c in client.get_collections().collections]
 
-
-def _rest_base() -> str:
-    return config.QDRANT_URL.rstrip("/")
-
-
-def _rest_headers() -> dict:
-    h = {"Content-Type": "application/json"}
-    if config.QDRANT_API_KEY:
-        h["api-key"] = config.QDRANT_API_KEY
-    return h
-
-
 def get_collection_properties(collection_name: str) -> dict:
-    """Читает произвольные метаданные коллекции (description, short_description и т.д.)."""
-    url = f"{_rest_base()}/collections/{collection_name}/properties"
+    """Читает метаданные коллекции из config.metadata."""
+    client = get_client()
     try:
-        resp = httpx.get(url, headers=_rest_headers(), verify=False, timeout=10)
-        if resp.status_code == 200:
-            result = resp.json().get("result")
-            if not isinstance(result, dict):
-                return {}
-            nested = result.get("properties")
-            if isinstance(nested, dict) and nested:
-                return nested
-            return result
+        info = client.get_collection(collection_name=collection_name)
+        config_obj = getattr(info, "config", None)
+        if config_obj:
+            metadata = getattr(config_obj, "metadata", None)
+            if metadata:
+                return dict(metadata)
     except Exception:
         pass
     return {}
 
-
 def set_collection_properties(collection_name: str, props: dict) -> bool:
-    """Обновляет (patch) метаданные коллекции. Требует существующей коллекции."""
-    url = f"{_rest_base()}/collections/{collection_name}/properties"
+    """Обновляет метаданные коллекции через PATCH /collections/{name}."""
+    client = get_client()
     try:
-        resp = httpx.patch(url, headers=_rest_headers(), json=props, verify=False, timeout=10)
-        return resp.status_code == 200
+        existing = get_collection_properties(collection_name)
+        merged = {**existing, **props}
+        
+        client.update_collection(
+            collection_name=collection_name,
+            metadata=merged,
+        )
+        return True
     except Exception:
         return False
