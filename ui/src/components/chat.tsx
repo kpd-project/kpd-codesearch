@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Trash2, Loader2, Bot } from 'lucide-react';
+import { Send, Trash2, Loader2, Bot, Copy, Check } from 'lucide-react';
 import { ChatMarkdownBody } from '@/lib/chat-markdown';
 import { apiUrl } from '@/lib/api-url';
 import { cn } from '@/lib/utils';
@@ -98,6 +98,8 @@ export function Chat({ className }: ChatProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const lastAutoScrollAtRef = useRef<number>(0);
+    const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
 
     useEffect(() => {
         saveMessagesToStorage(messages);
@@ -320,6 +322,22 @@ export function Chat({ className }: ChatProps) {
 
     const clearChat = () => setMessages([]);
 
+    const copyMessageText = async (text: string, messageIndex: number) => {
+        const t = text.trim();
+        if (!t) return;
+        try {
+            await navigator.clipboard.writeText(t);
+            if (copyFeedbackTimeoutRef.current) clearTimeout(copyFeedbackTimeoutRef.current);
+            setCopiedMessageIndex(messageIndex);
+            copyFeedbackTimeoutRef.current = setTimeout(() => {
+                setCopiedMessageIndex(null);
+                copyFeedbackTimeoutRef.current = null;
+            }, 2000);
+        } catch {
+            /* clipboard недоступен */
+        }
+    };
+
     return (
         <div className={cn('flex flex-col h-full', className)}>
             <ScrollArea className="flex-1 min-h-0">
@@ -343,20 +361,41 @@ export function Chat({ className }: ChatProps) {
                             >
                                 <div
                                     className={cn(
-                                        'text-xs mb-1 font-semibold',
-                                        msg.role === 'user'
-                                            ? 'opacity-70'
-                                            : 'flex items-center gap-1.5 text-muted-foreground',
+                                        'text-xs mb-1 font-semibold flex items-center justify-between gap-2',
+                                        msg.role === 'user' ? '' : 'text-muted-foreground',
                                     )}
                                 >
-                                    {msg.role === 'user' ? (
-                                        'Вы'
-                                    ) : (
-                                        <>
-                                            <Bot className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                                            <span>Ассистент</span>
-                                        </>
-                                    )}
+                                    <span
+                                        className={cn(
+                                            'flex items-center gap-1.5 min-w-0',
+                                            msg.role === 'user' && 'opacity-70',
+                                        )}
+                                    >
+                                        {msg.role === 'user' ? (
+                                            'Вы'
+                                        ) : (
+                                            <>
+                                                <Bot className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                                                <span>Ассистент</span>
+                                            </>
+                                        )}
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 shrink-0 -mr-1 -mt-0.5 text-muted-foreground hover:text-foreground"
+                                        disabled={!msg.content.trim()}
+                                        title={copiedMessageIndex === i ? 'Скопировано' : 'Копировать текст'}
+                                        aria-label={copiedMessageIndex === i ? 'Скопировано' : 'Копировать сообщение'}
+                                        onClick={() => void copyMessageText(msg.content, i)}
+                                    >
+                                        {copiedMessageIndex === i ? (
+                                            <Check className="h-3.5 w-3.5" aria-hidden />
+                                        ) : (
+                                            <Copy className="h-3.5 w-3.5" aria-hidden />
+                                        )}
+                                    </Button>
                                 </div>
                                 {msg.role === 'assistant' && msg.status && (
                                     <div className="text-xs text-muted-foreground mb-2 flex items-start gap-2 border-b border-border/60 pb-2">
