@@ -95,7 +95,7 @@ function ChunkCard({ chunk }: { chunk: ChunkResult }) {
         <div className="border border-border rounded-lg bg-card text-card-foreground">
             {/* Header */}
             <div
-                className="flex items-start gap-3 px-4 py-3 cursor-pointer select-none"
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
                 onClick={() => setExpanded((v) => !v)}
             >
                 {/* score 0–1: ≥0.7 / 0.5–0.7 / 0.35–0.5 / ниже 0.35 */}
@@ -241,10 +241,7 @@ export function VectorSearchTest() {
                     {/* Repo selector */}
                     <div className="flex items-center gap-2">
                         <Label className="text-sm text-muted-foreground whitespace-nowrap">Репозиторий</Label>
-                        <Select
-                            value={repo}
-                            onValueChange={(v) => v != null && setPrefs((p) => ({ ...p, repo: v }))}
-                        >
+                        <Select value={repo} onValueChange={(v) => v != null && setPrefs((p) => ({ ...p, repo: v }))}>
                             <SelectTrigger className="w-48 h-8 text-sm">
                                 <SelectValue />
                             </SelectTrigger>
