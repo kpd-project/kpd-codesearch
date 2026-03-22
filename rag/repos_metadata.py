@@ -1,48 +1,16 @@
-"""Persistent repo metadata storage (path, enabled, description, last_indexed)."""
-import json
-from pathlib import Path
-from typing import Optional
+"""Repo metadata stored in Qdrant collection properties."""
 import logging
+from rag.qdrant_client import get_collection_properties, set_collection_properties
 
 logger = logging.getLogger(__name__)
 
-_METADATA_FILE = Path(__file__).parent.parent / "repos_metadata.json"
-
-_metadata: dict[str, dict] = {}
-
-
-def _load() -> dict[str, dict]:
-    global _metadata
-    try:
-        if _METADATA_FILE.exists():
-            with open(_METADATA_FILE, "r", encoding="utf-8") as f:
-                _metadata = json.load(f)
-            logger.info(f"Loaded metadata for {len(_metadata)} repos")
-    except Exception as e:
-        logger.warning(f"Failed to load metadata: {e}")
-        _metadata = {}
-    return _metadata
-
-
-def _save():
-    try:
-        with open(_METADATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(_metadata, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error(f"Failed to save metadata: {e}")
-
 
 def get_metadata(name: str) -> dict:
-    if not _metadata:
-        _load()
-    return _metadata.get(name, {})
+    return get_collection_properties(name) or {}
 
 
 def set_metadata(name: str, data: dict):
-    if not _metadata:
-        _load()
-    _metadata[name] = data
-    _save()
+    set_collection_properties(name, data)
 
 
 def get_enabled(name: str) -> bool:
@@ -50,15 +18,8 @@ def get_enabled(name: str) -> bool:
 
 
 def set_enabled(name: str, enabled: bool):
-    data = get_metadata(name)
-    data["enabled"] = enabled
-    set_metadata(name, data)
+    set_collection_properties(name, {"enabled": enabled})
 
 
 def remove_metadata(name: str):
-    if name in _metadata:
-        del _metadata[name]
-        _save()
-
-
-_load()
+    pass

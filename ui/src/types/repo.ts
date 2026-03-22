@@ -1,3 +1,6 @@
+/** Сырые key/value из Qdrant collection metadata (без вычисленных полей карточки). */
+export type CollectionMetadata = Record<string, unknown>;
+
 export interface Repo {
   name: string;
   display_name?: string | null;
@@ -12,6 +15,7 @@ export interface Repo {
   short_description?: string | null;
   embedder_model?: string | null;
   embedder_dimension?: number | null;
+  collection_metadata?: CollectionMetadata;
 }
 
 /** Прогресс индексации: обработанные файлы относительно общего числа. */

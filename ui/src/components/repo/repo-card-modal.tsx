@@ -257,9 +257,9 @@ export function RepoCardModal({
             </div>
 
             <div className="space-y-2">
-              <Label>Метаданные (JSON)</Label>
+              <Label>Метаданные коллекции (Qdrant)</Label>
               <pre className="text-xs whitespace-pre-wrap wrap-break-word rounded-lg bg-muted/40 border border-border/60 p-3 max-h-[30vh] overflow-auto">
-                {JSON.stringify(repo, null, 2)}
+                {JSON.stringify(repo.collection_metadata ?? {}, null, 2)}
               </pre>
             </div>
           </div>
