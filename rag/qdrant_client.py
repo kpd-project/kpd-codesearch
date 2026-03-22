@@ -61,6 +61,23 @@ def list_collections() -> list[str]:
     client = get_client()
     return [c.name for c in client.get_collections().collections]
 
+# Поля, которые заново выставляет индексация / complete_indexing — из снапшота до delete не переносим.
+REINDEX_METADATA_REFRESH_KEYS = frozenset(
+    {
+        "embedder_model",
+        "embedder_dimension",
+        "indexed_path",
+    }
+)
+
+
+def filter_preserved_repo_metadata(props: dict | None) -> dict:
+    """Восстанавливает всё метаданные коллекции, кроме полей, пересчитываемых после индексации."""
+    if not props:
+        return {}
+    return {k: v for k, v in props.items() if k not in REINDEX_METADATA_REFRESH_KEYS}
+
+
 def get_collection_properties(collection_name: str) -> dict:
     """Читает метаданные коллекции из config.metadata."""
     client = get_client()
@@ -76,12 +93,16 @@ def get_collection_properties(collection_name: str) -> dict:
     return {}
 
 def set_collection_properties(collection_name: str, props: dict) -> bool:
-    """Обновляет метаданные коллекции через PATCH /collections/{name}."""
+    """Сливает props в существующие метаданные: не указанные ключи не трогает; None — удалить ключ."""
     client = get_client()
     try:
         existing = get_collection_properties(collection_name)
-        merged = {**existing, **props}
-        
+        merged = dict(existing)
+        for k, v in props.items():
+            if v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
         client.update_collection(
             collection_name=collection_name,
             metadata=merged,

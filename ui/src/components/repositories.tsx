@@ -36,6 +36,11 @@ export function Repositories({ status, loading, refetch }: RepositoriesProps) {
     setRepoCardOpen(true);
   };
 
+  const handleOpenExistingFromAdd = (collectionName: string) => {
+    setActiveRepoName(collectionName);
+    setRepoCardOpen(true);
+  };
+
   const handleReindex = async (name: string) => {
     await reindexRepo(name);
   };
@@ -56,6 +61,7 @@ export function Repositories({ status, loading, refetch }: RepositoriesProps) {
           open={isAddOpen}
           onOpenChange={setIsAddOpen}
           onAdd={addRepo}
+          onOpenExisting={handleOpenExistingFromAdd}
           basePath={basePath}
         />
       </div>

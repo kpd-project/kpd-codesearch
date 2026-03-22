@@ -44,3 +44,11 @@ export interface Settings {
 }
 
 export type RepoStatusType = "ready" | "indexing" | "error";
+
+/** Папка под REPOS_BASE_PATH для диалога добавления репозитория. */
+export interface RepoFolderCandidate {
+  folder: string;
+  relative_path: string;
+  already_added: boolean;
+  collection_name: string | null;
+}
