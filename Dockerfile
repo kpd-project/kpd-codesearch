@@ -1,4 +1,4 @@
-# LCPRO — Telegram RAG-бот для кодовой базы KPD
+# ASTRA-M — Telegram RAG-бот для кодовой базы проекта
 FROM python:3.12-slim
 
 WORKDIR /app

@@ -4,7 +4,7 @@ from typing import Optional
 
 class SearchQuery(BaseModel):
     text: str = Field(description="Поисковый запрос для поиска в коде")
-    repo: Optional[str] = Field(default=None, description="Репозиторий для поиска (kpd-backend, kpd-frontend и т.д.)")
+    repo: Optional[str] = Field(default=None, description="Репозиторий для поиска (имя коллекции / папки, например backend, frontend)")
     top_k: Optional[int] = Field(default=None, description="Количество результатов")
     min_score: Optional[float] = Field(default=None, description="Минимальный порог релевантности (0-1)")
 

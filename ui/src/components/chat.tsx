@@ -29,7 +29,7 @@ interface Message {
 }
 
 /** Один локальный чат; версия ключа — при смене формата данных. */
-const CHAT_STORAGE_KEY = 'kpd-codesearch-chat-messages-v5';
+const CHAT_STORAGE_KEY = 'astra-m-codesearch-chat-messages-v5';
 
 function isAnswerFooterMeta(v: unknown): v is AnswerFooterMeta {
     if (v == null || typeof v !== 'object') return false;
