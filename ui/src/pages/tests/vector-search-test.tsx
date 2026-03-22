@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStatus } from '@/hooks/use-api';
+import { useLocalStorage } from '@/hooks/use-local-storage';
 import { apiUrl } from '@/lib/api-url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChunkResult {
@@ -33,6 +34,50 @@ interface SearchMeta {
 interface SearchResponse {
     chunks: ChunkResult[];
     meta: SearchMeta;
+}
+
+const VECTOR_SEARCH_TEST_STORAGE_KEY = 'kpd-codesearch-vector-search-test-v1';
+
+/** Стабильная ссылка на пустой список, пока нет status (не триггерим лишние эффекты). */
+const EMPTY_REPO_LIST: { name: string }[] = [];
+
+interface VectorSearchStored {
+    query: string;
+    repo: string;
+    top_k: number;
+    min_score: number;
+    use_min_score: boolean;
+}
+
+const DEFAULT_VECTOR_SEARCH: VectorSearchStored = {
+    query: '',
+    repo: '__all__',
+    top_k: 5,
+    min_score: 0.5,
+    use_min_score: true,
+};
+
+function deserializeVectorSearchPrefs(raw: string | undefined): VectorSearchStored {
+    const d = DEFAULT_VECTOR_SEARCH;
+    if (raw == null || raw === '') return d;
+    try {
+        const p = JSON.parse(raw) as Record<string, unknown>;
+        return {
+            query: typeof p.query === 'string' ? p.query : d.query,
+            repo: typeof p.repo === 'string' ? p.repo : d.repo,
+            top_k:
+                typeof p.top_k === 'number' && Number.isFinite(p.top_k)
+                    ? Math.min(15, Math.max(1, Math.round(p.top_k)))
+                    : d.top_k,
+            min_score:
+                typeof p.min_score === 'number' && Number.isFinite(p.min_score)
+                    ? Math.min(1, Math.max(0, p.min_score))
+                    : d.min_score,
+            use_min_score: typeof p.use_min_score === 'boolean' ? p.use_min_score : d.use_min_score,
+        };
+    } catch {
+        return d;
+    }
 }
 
 function splitFilePath(path: string): { dir: string; base: string } {
@@ -105,13 +150,23 @@ function ChunkCard({ chunk }: { chunk: ChunkResult }) {
 
 export function VectorSearchTest() {
     const { status } = useStatus();
-    const repos = status?.repos ?? [];
+    const repos = status?.repos ?? EMPTY_REPO_LIST;
 
-    const [query, setQuery] = useState('');
-    const [repo, setRepo] = useState<string>('__all__');
-    const [topK, setTopK] = useState(5);
-    const [minScore, setMinScore] = useState(0.5);
-    const [useMinScore, setUseMinScore] = useState(true);
+    const [prefs, setPrefs] = useLocalStorage<VectorSearchStored>({
+        key: VECTOR_SEARCH_TEST_STORAGE_KEY,
+        defaultValue: DEFAULT_VECTOR_SEARCH,
+        deserialize: deserializeVectorSearchPrefs,
+        getInitialValueInEffect: false,
+    });
+
+    const { query, repo, top_k: topK, min_score: minScore, use_min_score: useMinScore } = prefs;
+
+    /** Если сохранённый репозиторий пропал из списка — сбрасываем на «все». */
+    useEffect(() => {
+        if (repo === '__all__') return;
+        const exists = repos.some((r) => r.name === repo);
+        if (repos.length > 0 && !exists) setPrefs((p) => ({ ...p, repo: '__all__' }));
+    }, [repos, repo, setPrefs]);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -154,13 +209,28 @@ export function VectorSearchTest() {
             {/* Search Form */}
             <div className="shrink-0 border-b border-border bg-background p-4 space-y-4">
                 <div className="flex gap-2">
-                    <Input
-                        placeholder="Поисковый запрос…"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        className="flex-1 font-mono text-sm"
-                    />
+                    <div className="relative flex-1">
+                        <Input
+                            placeholder="Поисковый запрос…"
+                            value={query}
+                            onChange={(e) => setPrefs((p) => ({ ...p, query: e.target.value }))}
+                            onKeyDown={handleKeyDown}
+                            className="w-full pr-9 font-mono text-sm"
+                        />
+                        {query.length > 0 && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                onClick={() => setPrefs((p) => ({ ...p, query: '' }))}
+                                title="Очистить запрос"
+                                aria-label="Очистить запрос"
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
                     <Button onClick={handleSearch} disabled={loading || !query.trim()}>
                         <Search className="w-4 h-4 mr-1.5" />
                         Искать
@@ -171,7 +241,10 @@ export function VectorSearchTest() {
                     {/* Repo selector */}
                     <div className="flex items-center gap-2">
                         <Label className="text-sm text-muted-foreground whitespace-nowrap">Репозиторий</Label>
-                        <Select value={repo} onValueChange={setRepo}>
+                        <Select
+                            value={repo}
+                            onValueChange={(v) => v != null && setPrefs((p) => ({ ...p, repo: v }))}
+                        >
                             <SelectTrigger className="w-48 h-8 text-sm">
                                 <SelectValue />
                             </SelectTrigger>
@@ -197,14 +270,23 @@ export function VectorSearchTest() {
                             max={15}
                             step={1}
                             value={topK}
-                            onChange={(e) => setTopK(Math.min(15, Math.max(1, parseInt(e.target.value) || 1)))}
+                            onChange={(e) =>
+                                setPrefs((p) => ({
+                                    ...p,
+                                    top_k: Math.min(15, Math.max(1, parseInt(e.target.value) || 1)),
+                                }))
+                            }
                             className="w-16 h-8 text-sm text-center"
                         />
                     </div>
 
                     {/* min_score */}
                     <div className="flex items-center gap-2">
-                        <Switch size="sm" checked={useMinScore} onCheckedChange={setUseMinScore} />
+                        <Switch
+                            size="sm"
+                            checked={useMinScore}
+                            onCheckedChange={(checked) => setPrefs((p) => ({ ...p, use_min_score: checked }))}
+                        />
                         <Label
                             className={`text-sm font-mono whitespace-nowrap ${
                                 useMinScore ? 'text-muted-foreground' : 'text-muted-foreground/50'
@@ -219,7 +301,12 @@ export function VectorSearchTest() {
                             step={0.01}
                             value={minScore}
                             disabled={!useMinScore}
-                            onChange={(e) => setMinScore(Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)))}
+                            onChange={(e) =>
+                                setPrefs((p) => ({
+                                    ...p,
+                                    min_score: Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)),
+                                }))
+                            }
                             className="w-16 h-8 text-sm text-center disabled:opacity-40"
                         />
                     </div>
