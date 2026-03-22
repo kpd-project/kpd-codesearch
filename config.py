@@ -110,7 +110,7 @@ RAG_RUNTIME_MODE: str = _r if _r in ("simple", "agent") else "agent"
 RAG_AGENT_MAX_ITERATIONS = int(os.getenv("RAG_AGENT_MAX_ITERATIONS", "10"))
 # Макс. символов чанка в ответе поиска (0 = без обрезки, передавать полный content)
 RAG_CHUNK_DISPLAY_CHARS = int(os.getenv("RAG_CHUNK_DISPLAY_CHARS", "0"))
-# Топ-K результатов по умолчанию при вызове search_code
+# Топ-K результатов по умолчанию при вызове semantic_search
 RAG_SEARCH_TOP_K = int(os.getenv("RAG_SEARCH_TOP_K", "10"))
 # Верхняя граница top_k (LLM не может запросить больше)
 RAG_SEARCH_TOP_K_MAX = int(os.getenv("RAG_SEARCH_TOP_K_MAX", "15"))

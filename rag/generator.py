@@ -16,7 +16,7 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "search_code",
+            "name": "semantic_search",
             "description": (
                 "Поиск по проиндексированным репозиториям. "
                 "Можно искать в конкретном репо или по всем сразу. "
@@ -79,7 +79,7 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
             return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."
         return f"Проиндексированы: {', '.join(indexed)}"
 
-    if name == "search_code":
+    if name == "semantic_search":
         query = args.get("query", "")
         repo = args.get("repo")
         top_k = min(int(args.get("top_k", config.RAG_SEARCH_TOP_K)), config.RAG_SEARCH_TOP_K_MAX)

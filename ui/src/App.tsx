@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Chat } from "@/components/chat";
 import { Repositories } from "@/components/repositories";
 import { useStatus } from "@/hooks/use-api";
@@ -9,11 +9,20 @@ import { Circle, Settings, HelpCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiUrl } from "@/lib/api-url";
+import { TestsLayout } from "@/pages/tests/tests-layout";
 
 type RagQueryMode = "simple" | "agent";
 
+function getActiveTab(pathname: string): string {
+  if (pathname.startsWith("/chat")) return "chat";
+  if (pathname.startsWith("/tests")) return "tests";
+  return "repositories";
+}
+
 function AppShell() {
-  const [activeTab, setActiveTab] = useState("repositories");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeTab = getActiveTab(location.pathname);
   const [ragSaving, setRagSaving] = useState(false);
   const { status, loading, refetch, wsConnected } = useStatus();
 
@@ -46,8 +55,17 @@ function AppShell() {
     [ragMode, refetch]
   );
 
+  const handleTabChange = useCallback(
+    (value: string) => {
+      if (value === "repositories") navigate("/");
+      else if (value === "chat") navigate("/chat");
+      else if (value === "tests") navigate("/tests/vector-search");
+    },
+    [navigate]
+  );
+
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col bg-background text-foreground">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="h-screen flex flex-col bg-background text-foreground">
       {/* Header с навигацией */}
       <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-background shrink-0">
         <div className="flex items-center gap-6">
@@ -67,6 +85,9 @@ function AppShell() {
             </TabsTrigger>
             <TabsTrigger value="chat" className="h-8 rounded-md px-3 py-0 text-sm data-[state=active]:bg-muted">
               Чат
+            </TabsTrigger>
+            <TabsTrigger value="tests" className="h-8 rounded-md px-3 py-0 text-sm data-[state=active]:bg-muted">
+              Тесты
             </TabsTrigger>
           </TabsList>
         </div>
@@ -98,6 +119,10 @@ function AppShell() {
             onRagModeChange={setRagMode}
             ragModeDisabled={loading || ragSaving}
           />
+        </TabsContent>
+
+        <TabsContent value="tests" className="flex-1 m-0 min-h-0">
+          <TestsLayout />
         </TabsContent>
       </main>
 
