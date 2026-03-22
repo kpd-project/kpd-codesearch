@@ -68,9 +68,6 @@ QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.gotskin.ru")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
 REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/kpd-project"))
-REPOS_WHITELIST = [
-    r.strip() for r in os.getenv("REPOS_WHITELIST", "").split(",") if r.strip()
-]
 
 CHUNK_SIZE = 1500
 

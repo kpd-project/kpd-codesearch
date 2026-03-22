@@ -2,7 +2,7 @@
 
 ## ЦЕЛЬ ПРОЕКТА
 
-Создание Telegram-бота для закрытого чата, который отвечает на вопросы о коде из репозиториев KPD-проекта с использованием RAG.
+Создание Telegram-бота и веб-интерфейса для закрытого чата: ответы на вопросы о коде из репозиториев KPD-проекта с использованием RAG.
 
 ---
 
@@ -10,11 +10,12 @@
 
 | Компонент | Технология |
 |-----------|------------|
-| Bot Framework | python-telegram-bot |
+| Bot | python-telegram-bot (polling) |
+| Web | FastAPI + uvicorn, фронт в `ui/` (Vite/React) |
 | Vector DB | Qdrant (remote: qdrant.gotskin.ru) |
-| Embeddings | text-embedding-3-small (OpenRouter) |
-| LLM | GLM-4 via OpenRouter |
-| Chunking | Построчный с перекрытием |
+| Embeddings | `openai/text-embedding-3-small` (через OpenRouter) |
+| LLM | задаётся в `.env` / Web UI: по умолчанию в коде `google/gemini-2.5-flash-preview` (simple-ветка); Two-Agent — GLM-4 (Analyst/Answerer) через OpenRouter |
+| Chunking | Tree-sitter (`treesitter-chunker`) + построчный fallback |
 
 ---
 
@@ -22,29 +23,36 @@
 
 | Репозиторий | Путь | Назначение |
 |-------------|------|------------|
-| kpd-backend | d:/kpd-project/kpd-backend | Java/Spring Boot |
-| kpd-frontend | d:/kpd-project/kpd-frontend | React/Vite |
-| kpd-se | d:/kpd-project/kpd-se | WYSIWYG редактор |
-| kpd-landing | d:/kpd-project/kpd-landing | Лендинг |
-| kpd-pdf-2 | d:/kpd-project/kpd-pdf-2 | PDF сервис |
+| kpd-backend | `d:/kpd-project/kpd-backend` | Java/Spring Boot |
+| kpd-frontend | `d:/kpd-project/kpd-frontend` | React/Vite |
+| kpd-se | `d:/kpd-project/kpd-se` | WYSIWYG редактор |
+| kpd-landing | `d:/kpd-project/kpd-landing` | Лендинг |
+| kpd-pdf-2 | `d:/kpd-project/kpd-pdf-2` | PDF сервис |
 
 ---
 
 ## СТРУКТУРА КОДА
 
 ```
-lcpro/
+kpd-codesearch/
 ├── config.py              # Конфигурация из .env
-├── main.py                # Точка входа, запуск бота
+├── main.py                # Точка входа: Telegram (thread) + Web (uvicorn :8000)
+├── whitelist.json         # Whitelist пользователей (приоритет над .env, см. config.py)
 ├── bot/
-│   └── handlers.py        # Обработчики команд Telegram
+│   └── handlers.py        # Команды и сообщения Telegram
+├── web/
+│   ├── main.py            # FastAPI, раздача UI
+│   ├── api.py             # REST + SSE (/api/query)
+│   └── state.py           # Состояние, runtime-настройки веба
+├── ui/                    # React (Vite), kebab-case для файлов
 └── rag/
-    ├── qdrant_client.py   # Работа с Qdrant (коллекции)
-    ├── embeddings.py       # Модель эмбедингов
-    ├── chunker/            # Семантический чанкинг (Tree-sitter + fallback)
-    ├── indexer.py          # Индексация репозитория
-    ├── retriever.py        # Поиск по векторам
-    └── generator.py        # Генерация ответа через LLM
+    ├── qdrant_client.py
+    ├── embeddings.py
+    ├── chunker/           # Tree-sitter + fallback
+    ├── indexer.py
+    ├── retriever.py
+    ├── generator.py       # Агентный RAG (tool loop)
+    └── agent/             # Two-Agent pipeline (Analyst + Answerer)
 ```
 
 ---
@@ -52,16 +60,14 @@ lcpro/
 ## АРХИТЕКТУРА
 
 ```
-User Message → Telegram Bot → RAG Pipeline → OpenRouter (LLM)
-                                       ↑
-                                 Vector Search (Qdrant)
-                                       ↑
-                                 Code Chunks
-                                       ↑
-                              d:/kpd-project/ repos
+User → Telegram или Web UI → RAG Pipeline → OpenRouter (LLM / embeddings)
+                              ↑
+                        Qdrant (vector search)
+                              ↑
+                        чанки кода с диска (REPOS_BASE_PATH)
 ```
 
-Каждый репозиторий = отдельная коллекция в Qdrant.
+Каждый репозиторий — отдельная коллекция в Qdrant.
 
 ---
 
@@ -69,75 +75,86 @@ User Message → Telegram Bot → RAG Pipeline → OpenRouter (LLM)
 
 | Команда | Описание | Реализация |
 |---------|----------|------------|
-| `/start` | Приветствие | handlers.py:start_command |
-| `/list` | Список репозиториев | handlers.py:list_command |
-| `/add <repo>` | Добавить + индекс | handlers.py:add_command |
-| `/remove <repo>` | Удалить | handlers.py:remove_command |
-| `/reindex <repo>` | Переиндексировать | handlers.py:reindex_command |
-| `/status` | Статус коллекций | handlers.py:status_command |
-| `/mode` | Переключить режим (Two-Agent / Simple) | handlers.py:mode_command |
-| `<текст>` | Вопрос → RAG | handlers.py:handle_message |
+| `/start` | Приветствие | `handlers.py:start_command` |
+| `/list` | Список репозиториев | `handlers.py:list_command` |
+| `/add <repo>` | Добавить + индекс | `handlers.py:add_command` |
+| `/remove <repo>` | Удалить | `handlers.py:remove_command` |
+| `/reindex <repo>` | Переиндексировать | `handlers.py:reindex_command` |
+| `/status` | Статус коллекций | `handlers.py:status_command` |
+| `/mode` | Two-Agent / Simple (в памяти до рестарта) | `handlers.py:mode_command` |
+| `/adduser`, `/removeuser`, `/listusers`, `/id` | Whitelist | `handlers.py` |
+| `<текст>` | Вопрос → RAG | `handlers.py:handle_message` |
+
+В группах ответ только при `@бот` или reply на сообщение бота.
 
 ---
 
 ## РЕЖИМЫ РАБОТЫ
 
-Бот поддерживает два режима обработки вопросов:
+### Telegram: `/mode`
 
-| Режим | Описание |
-|-------|----------|
-| **Two-Agent** | Двухагентный пайплайн: Analyst планирует поиск → Answerer синтезирует ответ |
-| **Simple** | Одноагентный пайплайн: прямой RAG (generator.py) |
+| Режим | Поведение |
+|-------|-----------|
+| **Two-Agent** | `rag/agent/pipeline.py`: Analyst → поиск → Answerer |
+| **Simple** | Если `RAG_RUNTIME_MODE=simple` — `generate_simple_answer`; иначе агентный `generator.py` |
 
-### Переключение режима
+- Дефолт Two-Agent/Simple при старте: `USE_TWO_AGENT_PIPELINE` (`.env`).
+- Переключение `/mode` хранится в `context.bot_data` (in-memory, сбрасывается при перезапуске).
 
-- **Команда `/mode`** — показывает inline-кнопки для выбора режима
-- **Дефолт при старте** — берётся из `config.USE_TWO_AGENT_PIPELINE` (`.env`)
-- **Хранение** — в `context.bot_data` (in-memory, сбрасывается при перезапуске бота)
+### Переменная `RAG_RUNTIME_MODE` (`simple` \| `agent`)
+
+Имеет смысл при **Simple** в Telegram и задаёт начальный `rag_mode` для веба (`web/state.py`). Через веб можно менять runtime без рестарта: `PUT /api/config/runtime`.
+
+В веб-чате нет отдельного Two-Agent пайплайна (Analyst/Answerer): только `simple` (поиск + один ответ) или `agent` (агентный цикл в `generator.py`). Двухагентный режим — только в Telegram при выборе Two-Agent в `/mode`.
 
 ---
 
 ## RAG PIPELINE
 
-### 1. Chunking (chunker/)
-- **Семантика**: Tree-sitter (treesitter-chunker) — границы по функциям, классам, методам (Java, JS, TS, Python, Go, Rust и др.)
-- **Fallback**: построчно с перекрытием для неподдерживаемых языков (JSON, YAML, MD и т.д.)
-- Исключаются: node_modules, .git, target, dist, build и т.д.
+### 1. Chunking (`chunker/`)
 
-### 2. Embeddings (embeddings.py)
-- Модель: text-embedding-3-small
-- Размерность: 1536
-- Провайдер: OpenRouter API
+- **Основной путь**: Tree-sitter — границы по функциям, классам, методам.
+- **Fallback**: построчно с перекрытием для неподдерживаемых языков.
+- Исключаются: `node_modules`, `.git`, `target`, `dist`, `build` и т.д.
 
-### 3. Indexing (indexer.py)
-- Создание коллекции в Qdrant
-- Генерация векторов
-- Загрузка точек с метаданными (repo, path, language, type)
+### 2. Embeddings (`embeddings.py`)
 
-### 4. Retrieval (retriever.py)
-- Поиск по векторам (top_k=5)
-- Сортировка по score
+- Модель из `EMBEDDINGS_MODEL` (например `openai/text-embedding-3-small`).
+- Размерность: `EMBEDDINGS_DIMENSION` (для указанной модели — обычно 1536).
 
-### 5. Generation (generator.py)
-- Сбор контекста из результатов
-- Формирование промпта
-- Запрос к GLM-4 через OpenRouter
+### 3. Indexing (`indexer.py`)
+
+- Коллекция в Qdrant на репозиторий, метаданные: repo, path, language, type и др.
+
+### 4. Retrieval (`retriever.py`)
+
+- Поиск по векторам; фактический `top_k` в агенте ограничен `RAG_SEARCH_TOP_K` / `RAG_SEARCH_TOP_K_MAX` из конфига.
+
+### 5. Generation
+
+- **Two-Agent**: Analyst + Answerer (`rag/agent/`).
+- **Simple + agent**: `generator.py` (инструмент `search_code`).
+- **Simple + simple**: поиск + один ответ без tool-цикла.
 
 ---
 
 ## НАСТРОЙКИ (.env)
 
+Полный шаблон и комментарии — `.env.example`. Минимальный набор:
+
 ```env
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WHITELIST_USERS=
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=google/gemini-2.0-flash-001
-EMBEDDINGS_MODEL=text-embedding-3-small
+OPENROUTER_API_URL=https://openrouter.ai/api/v1
+OPENROUTER_MODEL=google/gemini-2.5-flash-preview
+EMBEDDINGS_MODEL=openai/text-embedding-3-small
 EMBEDDINGS_DIMENSION=1536
 QDRANT_URL=https://qdrant.gotskin.ru
 QDRANT_API_KEY=
 REPOS_BASE_PATH=d:/kpd-project
-REPOS_WHITELIST=kpd-backend,kpd-frontend,kpd-se,kpd-landing,kpd-pdf-2
+USE_TWO_AGENT_PIPELINE=true
+RAG_RUNTIME_MODE=agent
 ```
 
 ---
@@ -145,49 +162,60 @@ REPOS_WHITELIST=kpd-backend,kpd-frontend,kpd-se,kpd-landing,kpd-pdf-2
 ## РАЗРАБОТКА
 
 ### Запуск
+
 ```bash
 pip install -r requirements.txt
 python main.py
 ```
 
-### Docker (сборка + автозапуск)
+Веб: `http://localhost:8000`. Бот стартует в отдельном потоке, если задан `TELEGRAM_BOT_TOKEN`.
+
+### Docker
+
 ```bash
 docker compose up -d --build
 ```
-- `.env` подхватывается из корня проекта
-- Репозитории монтируются из `REPOS_BASE_PATH` (из .env) в `/repos`
-- `restart: unless-stopped` — автоперезапуск при падении
+
+- `.env` из корня проекта.
+- В контейнере `REPOS_BASE_PATH` → `/repos`, на хост репозитории монтируются из пути в `.env`.
+- `restart: unless-stopped`.
 
 ### При изменении кода
-1. Изменения в .env → перезапуск бота
-2. Новый репозиторий → добавить в REPOS_WHITELIST
-3. Изменение chunking → переиндексация: /reindex <repo>
+
+1. Правки `.env` → перезапуск процесса/контейнера.
+2. Новый репозиторий → добавление через UI или `/add` (коллекции в Qdrant).
+3. Смена chunking / embedding-модели → переиндексация (`/reindex` или API).
 
 ### Тесты и линтеры
-Пока не настроены. При необходимости добавить pytest/ruff.
+
+По желанию: pytest, ruff.
 
 ---
 
 ## ПРИНЯТЫЕ РЕШЕНИЯ
 
-1. **Отдельные коллекции** — каждый репозиторий своя коллекция в Qdrant для гибкого управления
-2. **OpenRouter** — единый API для embeddings и LLM
-3. **Простой chunking** — построчный с перекрытием, без сложных парсеров
-4. **Whitelist пользователей** — для безопасности в закрытом чате
+1. **Отдельные коллекции** — один репозиторий = одна коллекция в Qdrant.
+2. **OpenRouter** — единый API для embeddings и LLM.
+3. **Chunking** — Tree-sitter с fallback на построчный режим.
+4. **Whitelist** — `whitelist.json` с fallback на `TELEGRAM_WHITELIST_USERS` в `.env`.
 
 ---
 
 ## ИМЕНОВАНИЕ ФАЙЛОВ И ПАПОК
 
 ### UI (`ui/`)
-- **Все файлы и папки** именуются через `kebab-case` (например, `repo-card.tsx`, `use-repo-describe.ts`)
-- Исключение: конфигурационные файлы с собственными соглашениями (`.env`, `.gitignore`, `package.json`)
+
+- Файлы и папки — **kebab-case** (например `repo-card.tsx`).
+- Исключения: `.env`, `package.json`, конфиги с собственными соглашениями.
 
 ### Backend (Python)
-- Используется `snake_case` для файлов и функций
+
+- `snake_case` для файлов и функций.
 
 ---
+
 ## UI / Темизация (shadcn)
-- Интерфейс собирается из компонентов `shadcn` (в т.ч. локальные re-export’ы в `ui/src/components/ui/*`). Компоненты не “дописываются” костылями и не переиспользуются только ради изменения темы.
-- Запрещены хардкодные подмены базовой темы и палитры (например, ручные переопределения `:root/.dark` и `@theme inline`, а также массовые замены на `bg-slate-*`, `text-slate-*`, `bg-blue-*` внутри экранов). Для цвета используются CSS-переменные shadcn (`bg-background`, `text-foreground`, `border-border`, `bg-primary`, `text-muted-foreground` и т.д.).
-- Разрешены только точечные, минимальные кастомизации поведения/разметки (spacing, размеры, дополнительные `className`) без изменения общей системы тем.
+
+- Компоненты из shadcn (в т.ч. re-export в `ui/src/components/ui/*`).
+- Без хардкодной подмены глобальной темы; цвета через CSS-переменные shadcn (`bg-background`, `text-foreground`, и т.д.).
+- Допустимы точечные правки разметки/spacing без смены системы тем.

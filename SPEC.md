@@ -16,8 +16,8 @@ Web-интерфейс предназначен для локального за
 | Компонент | Технология |
 |-----------|-------------|
 | Web Framework | FastAPI |
-| Frontend | HTML + Vanilla JS (без React) |
-| Real-time | WebSocket (native) |
+| Frontend | React + TypeScript + Vite (`ui/`) |
+| Real-time | WebSocket (`/ws/state`) |
 | State | In-Memory Dict (DEC-002) |
 | Containerization | Docker + docker-compose |
 
@@ -132,7 +132,7 @@ Web-интерфейс предназначен для локального за
 | Уровень | Параметры | Интерфейс |
 |---------|-----------|-----------|
 | 🔴 System | `TELEGRAM_BOT_TOKEN`, `OPENROUTER_API_KEY`, `QDRANT_URL`, `EMBEDDINGS_MODEL` | Только `.env` |
-| 🟡 Operational | `REPOS_WHITELIST` | Web UI (Admin) |
+| 🟡 Operational | Репозитории (коллекции Qdrant), whitelist пользователей | Web UI / бот |
 | 🟢 Runtime | `OPENROUTER_MODEL`, `TEMPERATURE`, `TOP_K`, `MAX_CHUNKS` | Web UI (все) |
 
 **Runtime Settings UI:**

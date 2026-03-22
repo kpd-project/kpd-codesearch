@@ -26,7 +26,7 @@
 | Уровень | Параметры | Где настраивать | Перезапуск | Переиндексация |
 |---------|-----------|-----------------|------------|----------------|
 | **🔴 System** | `TELEGRAM_BOT_TOKEN`, `OPENROUTER_API_KEY`, `QDRANT_URL`, `REPOS_BASE_PATH`, `EMBEDDINGS_MODEL`, `EMBEDDINGS_DIMENSION` | **Только .env** | ✅ Требуется | ✅ При смене модели |
-| **🟡 Operational** | `REPOS_WHITELIST`, `TELEGRAM_WHITELIST_USERS` | **Web UI (Admin)** | ❌ Не требуется | ⚠️ При добавлении репо |
+| **🟡 Operational** | Список репозиториев (Qdrant), `TELEGRAM_WHITELIST_USERS` / `whitelist.json` | **Web UI / команды бота** | ❌ Не требуется | ⚠️ При добавлении репо |
 | **🟢 Runtime** | `OPENROUTER_MODEL` (LLM), `TEMPERATURE`, `TOP_K`, `MAX_CHUNKS` | **Web UI (Все пользователи)** | ❌ Не требуется | ❌ Не требуется |
 
 ---
