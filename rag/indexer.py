@@ -4,13 +4,13 @@ from qdrant_client.models import PointStruct
 import uuid
 import time
 import json
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 import config
 from .chunker import chunk_file
 from .chunker.base import iter_code_files
 from .embeddings import get_async_embeddings
-from .qdrant_client import get_client, create_collection
+from .qdrant_client import get_client, create_collection, set_collection_properties
 
 INDEX_STATE_DIR = Path(__file__).resolve().parent.parent / ".index_state"
 
@@ -49,9 +49,7 @@ async def _process_file(
     progress_lock: asyncio.Lock,
     indexed_paths: set,
     state_path: Path,
-    progress_callback: Optional[Callable],
-    current_file_idx: int,
-    total_files: int,
+    emit_progress: Callable[[str, int, int, bool], Awaitable[None]],
 ) -> tuple[int, int]:
     rel_path = file_path.relative_to(repo_path).as_posix()
 
@@ -59,8 +57,7 @@ async def _process_file(
         chunks = chunk_file(file_path, repo_name, repo_path)
 
     if not chunks:
-        if progress_callback:
-            progress_callback(current_file_idx, total_files, rel_path, 0, 0, skipped=True)
+        await emit_progress(rel_path, 0, 0, True)
         return (0, 0)
 
     texts = [f"{c['metadata']['repo']}/{c['metadata']['path']}\n{c['content']}" for c in chunks]
@@ -100,8 +97,7 @@ async def _process_file(
         indexed_paths.add(rel_path)
         _save_indexed_paths(repo_name, indexed_paths)
 
-    if progress_callback:
-        progress_callback(current_file_idx, total_files, rel_path, len(chunks), len(vectors), skipped=False)
+    await emit_progress(rel_path, len(chunks), len(vectors), False)
 
     return (len(chunks), len(vectors))
 
@@ -111,19 +107,22 @@ async def index_repo_async(
     verbose: bool = True,
     resume: bool = False,
     on_progress: Optional[Callable] = None,
+    repo_path_override: Optional[Path] = None,
 ) -> dict:
     t0 = time.perf_counter()
     log = lambda s: print(s) if verbose else None
 
-    repo_path = config.REPOS_BASE_PATH / repo_name
+    repo_path = Path(repo_path_override) if repo_path_override else (config.REPOS_BASE_PATH / repo_name)
     if not repo_path.exists():
         return {"error": f"Repository not found: {repo_name}"}
 
-    if repo_name not in config.REPOS_WHITELIST:
-        return {"error": f"Repository not in whitelist: {repo_name}"}
-
     log(f"\n[reindex] {repo_name}")
     create_collection(repo_name)
+    embedder_model = config.EMBEDDINGS_MODEL.rsplit("/", 1)[-1] if "/" in config.EMBEDDINGS_MODEL else config.EMBEDDINGS_MODEL
+    set_collection_properties(repo_name, {
+        "embedder_model": embedder_model,
+        "embedder_dimension": config.EMBEDDINGS_DIMENSION,
+    })
 
     state_path = _state_path(repo_name)
     if not resume:
@@ -140,6 +139,8 @@ async def index_repo_async(
 
     file_semaphore = asyncio.Semaphore(config.EMBED_MAX_FILES_CONCURRENT)
     progress_lock = asyncio.Lock()
+    done_lock = asyncio.Lock()
+    done_count = 0
 
     total_chunks = 0
     total_vectors = 0
@@ -152,12 +153,19 @@ async def index_repo_async(
         if on_progress:
             on_progress(idx, total, path, chunks, vectors, skipped)
 
+    async def emit_progress(path: str, chunks: int, vectors: int, skipped: bool):
+        nonlocal done_count
+        async with done_lock:
+            done_count += 1
+            seq = done_count
+        progress_callback(seq, total_files, path, chunks, vectors, skipped)
+
     tasks = []
     for fi, file_path in enumerate(file_list):
         rel_path = file_path.relative_to(repo_path).as_posix()
 
         if rel_path in indexed_paths:
-            progress_callback(fi + 1, total_files, rel_path, 0, 0, skipped=True)
+            await emit_progress(rel_path, 0, 0, True)
             continue
 
         task = asyncio.create_task(
@@ -171,9 +179,7 @@ async def index_repo_async(
                 progress_lock=progress_lock,
                 indexed_paths=indexed_paths,
                 state_path=state_path,
-                progress_callback=progress_callback,
-                current_file_idx=fi + 1,
-                total_files=total_files,
+                emit_progress=emit_progress,
             )
         )
         tasks.append(task)
@@ -191,6 +197,14 @@ async def index_repo_async(
     elapsed = time.perf_counter() - t0
     log(f"  done   {total_chunks} chunks, {total_vectors} vectors  ({elapsed:.1f}s total)\n")
 
+    set_collection_properties(
+        repo_name,
+        {
+            "embedder_model": config.EMBEDDINGS_MODEL,
+            "embedder_dimension": config.EMBEDDINGS_DIMENSION,
+        },
+    )
+
     return {
         "repo": repo_name,
         "chunks": total_chunks,
@@ -205,3 +219,22 @@ def index_repo(
     on_progress: Optional[Callable] = None,
 ) -> dict:
     return asyncio.run(index_repo_async(repo_name, verbose, resume, on_progress))
+
+
+async def index_repository(
+    repo_path: str | Path,
+    collection_name: str,
+    progress_callback: Optional[Callable] = None,
+) -> int:
+    """Индексация по явному пути и имени коллекции (для Web API)."""
+    path = Path(repo_path) if repo_path and str(repo_path).strip() else (config.REPOS_BASE_PATH / collection_name)
+    result = await index_repo_async(
+        repo_name=collection_name,
+        verbose=False,
+        resume=False,
+        on_progress=progress_callback,
+        repo_path_override=path,
+    )
+    if "error" in result:
+        raise ValueError(result["error"])
+    return result.get("chunks", 0)

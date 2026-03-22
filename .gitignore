@@ -1,5 +1,6 @@
 # Secrets
 .env
+.plan
 
 # Python
 __pycache__/
@@ -43,3 +44,4 @@ scripts/show_chunks_output.md
 # OS
 .DS_Store
 Thumbs.db
+repos_metadata.json

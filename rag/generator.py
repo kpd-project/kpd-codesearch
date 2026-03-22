@@ -1,9 +1,10 @@
-import requests
 import json
 import logging
+import requests
+import httpx
 import config
 from .retriever import search_all_repos, search_in_repo
-from .qdrant_client import collection_exists
+from .qdrant_client import collection_exists, list_collections
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ TOOLS = [
         "function": {
             "name": "search_code",
             "description": (
-                "Поиск по проиндексированным репозиториям KPD. "
+                "Поиск по проиндексированным репозиториям. "
                 "Можно искать в конкретном репо или по всем сразу. "
                 "Вызывай несколько раз с разными формулировками запроса для лучшего результата. "
                 "Для широких вопросов используй top_k ближе к максимуму — вернётся больше релевантных сниппетов (код полный, без обрезки)."
@@ -32,8 +33,8 @@ TOOLS = [
                     "repo": {
                         "type": "string",
                         "description": (
-                            "Имя репозитория для поиска (kpd-backend, kpd-frontend, kpd-se, "
-                            "kpd-landing, kpd-pdf-2). Если не указан — ищет по всем."
+                            "Идентификатор репозитория из списка проиндексированных "
+                            "(см. list_indexed_repos). Если не указан — поиск по всем."
                         ),
                     },
                     "top_k": {
@@ -71,7 +72,9 @@ TOOLS = [
 def _execute_tool(name: str, args: dict, on_status=None) -> str:
     logger.debug("Tool call: %s(%s)", name, args)
     if name == "list_indexed_repos":
-        indexed = [r for r in config.REPOS_WHITELIST if collection_exists(r)]
+        if on_status:
+            on_status("📋 Проверяю список проиндексированных репозиториев…")
+        indexed = list_collections()
         if not indexed:
             return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."
         return f"Проиндексированы: {', '.join(indexed)}"
@@ -242,12 +245,168 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
         return answer, _make_session_data(tool_calls_log, max_iterations, usage_total)
 
 
-def _make_session_data(tool_calls_log: list[dict], iterations: int, usage: dict | None = None) -> dict:
-    data = {
-        "model": config.OPENROUTER_MODEL,
+RAG_CONTEXT_SYSTEM = (
+    "Ты помощник по коду. Отвечай кратко, опираясь только на предоставленный контекст. "
+    "Ответ в Markdown."
+)
+
+
+async def generate_response(
+    query: str,
+    context_chunks: list[dict],
+    model: str | None = None,
+    temperature: float = 0.1,
+):
+    """Стриминг ответа LLM по контексту (для Web API)."""
+    model = model or config.OPENROUTER_MODEL
+    context = "\n\n---\n\n".join(
+        f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
+        for c in context_chunks
+    )
+    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        async with client.stream(
+            "POST",
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": RAG_CONTEXT_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": True,
+                "temperature": temperature,
+                "max_tokens": 4000,
+            },
+        ) as resp:
+            if resp.status_code != 200:
+                raise RuntimeError(f"OpenRouter error {resp.status_code}: {await resp.aread()}")
+            async for line in resp.aiter_lines():
+                if line.startswith("data: ") and line != "data: [DONE]":
+                    try:
+                        data = json.loads(line[6:])
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        pass
+
+
+def generate_simple_answer(
+    question: str,
+    *,
+    repo_name: str | None = None,
+    top_k: int = 10,
+    max_chunks: int = 10,
+    model: str | None = None,
+    temperature: float = 0.1,
+    on_status=None,
+) -> tuple[str, dict]:
+    """Синхронный простой RAG: один векторный поиск + один ответ LLM (без агента)."""
+    from .retriever import search_all_repos, search_in_repo
+
+    if on_status:
+        on_status("🔍 Ищу фрагменты кода…")
+
+    if repo_name:
+        chunks = search_in_repo(repo_name, question, top_k)
+        for c in chunks:
+            c["repo"] = repo_name
+    else:
+        chunks = search_all_repos(question, top_k)
+
+    chunks = chunks[:max_chunks]
+
+    if not chunks:
+        msg = (
+            "По запросу ничего не найдено в индексе. "
+            "Переформулируйте вопрос или проверьте, что репозитории проиндексированы."
+        )
+        meta = simple_session_metadata()
+        meta["model_primary"] = model or config.OPENROUTER_MODEL
+        return msg, meta
+
+    if on_status:
+        on_status("✍️ Формирую ответ…")
+
+    mdl = model or config.OPENROUTER_MODEL
+    context = "\n\n---\n\n".join(
+        f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
+        for c in chunks
+    )
+    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {question}"
+
+    try:
+        response = requests.post(
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": mdl,
+                "messages": [
+                    {"role": "system", "content": RAG_CONTEXT_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+                "temperature": temperature,
+                "max_tokens": 4000,
+            },
+            timeout=config.RAG_AGENT_TIMEOUT,
+        )
+    except requests.exceptions.Timeout:
+        answer = f"Таймаут при запросе к LLM ({config.RAG_AGENT_TIMEOUT}с)."
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+    except Exception as e:
+        answer = f"Ошибка: {e}"
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+
+    if response.status_code != 200:
+        answer = f"Ошибка API ({response.status_code}): {response.text[:500]}"
+        meta = simple_session_metadata()
+        meta["model_primary"] = mdl
+        return answer, meta
+
+    data = response.json()
+    usage = data.get("usage") or {}
+    answer = data["choices"][0]["message"].get("content") or "Нет ответа"
+    meta = simple_session_metadata(usage)
+    meta["model_primary"] = mdl
+    return answer, meta
+
+
+def _make_session_data(
+    tool_calls_log: list[dict],
+    iterations: int,
+    usage: dict | None = None,
+    *,
+    simple: bool = False,
+) -> dict:
+    """Метаданные для лога: в умном режиме — две модели (цикл агента + финальный проход);
+    в простом — только model_primary, model_secondary не пишем."""
+    data: dict = {
+        "model_primary": config.OPENROUTER_MODEL,
         "iterations": iterations,
         "tool_calls": tool_calls_log,
     }
+    if not simple:
+        data["model_secondary"] = config.OPENROUTER_MODEL
     if usage:
         data["usage"] = usage
     return data
+
+
+def simple_session_metadata(usage: dict | None = None) -> dict:
+    """Лог для простого RAG: один поиск чанков + один стриминговый ответ (без model_secondary)."""
+    return _make_session_data([], 1, usage, simple=True)
