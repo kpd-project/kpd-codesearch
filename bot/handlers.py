@@ -9,6 +9,11 @@ import config
 
 logger = logging.getLogger(__name__)
 import rag
+from rag.qdrant_client import (
+    filter_preserved_repo_metadata,
+    get_collection_properties,
+    set_collection_properties,
+)
 from rag.validation import validate_user_question
 from web.state import state
 from bot.session_logger import save_session
@@ -173,7 +178,9 @@ async def _run_reindex(status_msg, repo_name: str):
     progress_queue = queue.Queue()
 
     try:
+        preserved_meta: dict = {}
         if rag.collection_exists(repo_name):
+            preserved_meta = filter_preserved_repo_metadata(get_collection_properties(repo_name))
             rag.delete_collection(repo_name)
 
         index_task = asyncio.create_task(_run_index_async(repo_name, resume=False, progress_queue=progress_queue))
@@ -188,6 +195,8 @@ async def _run_reindex(status_msg, repo_name: str):
         if "error" in result:
             await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:
+            if preserved_meta:
+                set_collection_properties(repo_name, preserved_meta)
             await _safe_edit_text(status_msg,
                 f"✅ Готово!\n"
                 f"Чанков: {result['chunks']}\n"

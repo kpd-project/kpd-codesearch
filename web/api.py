@@ -31,7 +31,13 @@ def _format_uptime(delta: timedelta) -> str:
 from web.state import state
 from web.websocket import ws_manager
 from rag.indexer import index_repository
-from rag.qdrant_client import collection_exists, delete_collection
+from rag.qdrant_client import (
+    collection_exists,
+    delete_collection,
+    filter_preserved_repo_metadata,
+    get_collection_properties,
+    set_collection_properties,
+)
 from rag.retriever import search_code
 from rag.generator import generate_answer, generate_response, simple_session_metadata
 from rag.validation import validate_user_question
@@ -115,6 +121,24 @@ async def get_status():
 async def list_repos():
     """List all repositories."""
     return {"repos": state.list_repos()}
+
+
+@router.get("/api/repos/candidates")
+async def list_repo_folder_candidates():
+    """Подпапки под REPOS_BASE_PATH для выбора при добавлении репозитория."""
+    base = Path(config.REPOS_BASE_PATH)
+    if not base.exists():
+        raise HTTPException(status_code=404, detail="Базовый путь не существует")
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail="Базовый путь не является каталогом")
+    try:
+        return state.list_repo_folder_candidates()
+    except OSError as e:
+        logger.warning("repo folder candidates scan failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Не удалось прочитать содержимое базового каталога",
+        ) from e
 
 
 @router.post("/api/repos")
@@ -216,7 +240,9 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
 
     async def run_index():
         try:
+            preserved_meta: dict = {}
             if collection_exists(name):
+                preserved_meta = filter_preserved_repo_metadata(get_collection_properties(name))
                 delete_collection(name)
             def on_file_progress(
                 idx: int,
@@ -252,6 +278,8 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
                 collection_name=name,
                 progress_callback=on_file_progress,
             )
+            if preserved_meta:
+                set_collection_properties(name, preserved_meta)
             state.complete_indexing(name, total_chunks, indexed_path=repo_path)
             await ws_manager.broadcast({
                 "type": "index_complete",

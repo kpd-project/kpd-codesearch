@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 
 import config
+from rag.chunker.base import IGNORE_DIRS
 from qdrant_client import QdrantClient
 from rag.qdrant_client import (
     get_client as get_qdrant_client,
@@ -248,13 +249,13 @@ class State:
 
         if relative_path is not _UNSET:
             if relative_path is None:
-                props_update.pop("relative_path", None)
+                props_update["relative_path"] = None
             else:
                 normalized_rel = _normalize_relative_path(str(relative_path))
                 if normalized_rel:
                     props_update["relative_path"] = normalized_rel
                 else:
-                    props_update.pop("relative_path", None)
+                    props_update["relative_path"] = None
 
         if props_update:
             set_collection_properties(name, props_update)
@@ -295,6 +296,54 @@ class State:
     def error_indexing(self, repo: str):
         self.indexing_progress.pop(repo, None)
         self._repo_status[repo] = "error"
+
+    def _collection_name_for_folder(self, folder: str) -> str | None:
+        """Имя коллекции Qdrant, если папка уже привязана к репозиторию."""
+        try:
+            client = self.get_qdrant()
+            for col in client.get_collections().collections:
+                cname = col.name
+                if cname == folder:
+                    return cname
+                props = get_collection_properties(cname)
+                rel = _normalize_relative_path(props.get("relative_path"))
+                if rel and (rel == folder or rel.startswith(f"{folder}/")):
+                    return cname
+        except Exception as e:
+            logger.warning("Failed to resolve collection for folder %s: %s", folder, e)
+        return None
+
+    def list_repo_folder_candidates(self) -> dict:
+        """Подпапки под REPOS_BASE_PATH и флаги «уже в Qdrant»."""
+        base = config.REPOS_BASE_PATH
+        folders: list[str] = []
+        try:
+            for entry in sorted(base.iterdir(), key=lambda p: p.name.lower()):
+                if not entry.is_dir():
+                    continue
+                name = entry.name
+                if name.startswith("."):
+                    continue
+                if name in IGNORE_DIRS:
+                    continue
+                folders.append(name)
+        except OSError as e:
+            logger.warning("Failed to scan REPOS_BASE_PATH: %s", e)
+            raise
+
+        candidates: list[dict] = []
+        for folder in folders:
+            cname = self._collection_name_for_folder(folder)
+            candidates.append(
+                {
+                    "folder": folder,
+                    "relative_path": folder,
+                    "already_added": cname is not None,
+                    "collection_name": cname,
+                }
+            )
+
+        return {"base_path": str(base), "candidates": candidates}
 
 
 state = State()
