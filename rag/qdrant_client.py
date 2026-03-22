@@ -9,7 +9,6 @@ def get_client() -> QdrantClient:
     global _client
     if _client is None:
         parsed = urlparse(config.QDRANT_URL)
-        # host + port + https вместо url — обход SSL-бага qdrant-client на Windows
         _client = QdrantClient(
             host=parsed.hostname,
             port=parsed.port or (443 if parsed.scheme == "https" else 80),
@@ -51,7 +50,6 @@ def get_collection_info(collection_name: str) -> dict:
     if not collection_exists(collection_name):
         return None
     info = client.get_collection(collection_name=collection_name)
-    # indexed_vectors_count может быть 0 при построении индекса — показываем points_count
     vec = getattr(info, "indexed_vectors_count", None)
     return {
         "name": collection_name,
@@ -62,3 +60,53 @@ def get_collection_info(collection_name: str) -> dict:
 def list_collections() -> list[str]:
     client = get_client()
     return [c.name for c in client.get_collections().collections]
+
+# Поля, которые заново выставляет индексация / complete_indexing — из снапшота до delete не переносим.
+REINDEX_METADATA_REFRESH_KEYS = frozenset(
+    {
+        "embedder_model",
+        "embedder_dimension",
+        "indexed_path",
+    }
+)
+
+
+def filter_preserved_repo_metadata(props: dict | None) -> dict:
+    """Восстанавливает всё метаданные коллекции, кроме полей, пересчитываемых после индексации."""
+    if not props:
+        return {}
+    return {k: v for k, v in props.items() if k not in REINDEX_METADATA_REFRESH_KEYS}
+
+
+def get_collection_properties(collection_name: str) -> dict:
+    """Читает метаданные коллекции из config.metadata."""
+    client = get_client()
+    try:
+        info = client.get_collection(collection_name=collection_name)
+        config_obj = getattr(info, "config", None)
+        if config_obj:
+            metadata = getattr(config_obj, "metadata", None)
+            if metadata:
+                return dict(metadata)
+    except Exception:
+        pass
+    return {}
+
+def set_collection_properties(collection_name: str, props: dict) -> bool:
+    """Сливает props в существующие метаданные: не указанные ключи не трогает; None — удалить ключ."""
+    client = get_client()
+    try:
+        existing = get_collection_properties(collection_name)
+        merged = dict(existing)
+        for k, v in props.items():
+            if v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
+        client.update_collection(
+            collection_name=collection_name,
+            metadata=merged,
+        )
+        return True
+    except Exception:
+        return False

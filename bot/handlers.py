@@ -9,6 +9,13 @@ import config
 
 logger = logging.getLogger(__name__)
 import rag
+from rag.qdrant_client import (
+    filter_preserved_repo_metadata,
+    get_collection_properties,
+    set_collection_properties,
+)
+from rag.validation import validate_user_question
+from web.state import state
 from bot.session_logger import save_session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
@@ -32,13 +39,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(user.id if user else None):
         return
     await update.message.reply_text(
-        "👋 Привет! Я бот для работы с кодовой базой KPD.\n\n"
+        "👋 Привет! Я бот для вопросов по коду в подключённых репозиториях.\n\n"
         "Доступные команды:\n"
         "/list - Список доступных репозиториев\n"
         "/add <repo> - Добавить и проиндексировать репозиторий\n"
         "/remove <repo> - Удалить репозиторий\n"
         "/reindex <repo> - Переиндексировать репозиторий\n"
-        "/status - Статус всех коллекций\n\n"
+        "/status - Статус всех коллекций\n"
+        "/mode - Переключить режим работы (Two-Agent / Simple)\n\n"
+        "<b>Администрирование:</b>\n"
+        "/adduser <id/@username> - Добавить пользователя\n"
+        "/removeuser <id/@username> - Удалить пользователя\n"
+        "/listusers - Список пользователей\n"
+        "/id - Узнать ID пользователя\n\n"
         "Просто напиши вопрос — и я отвечу на основе кода!\n\n"
         "В группе: напиши @бот вопрос — бот ответит только при упоминании."
     )
@@ -48,12 +61,14 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_allowed(user.id if user else None):
         return
-    repos = config.REPOS_WHITELIST
-    text = "📁 Доступные репозитории:\n\n"
-    for repo in repos:
-        exists = rag.collection_exists(repo)
-        status = "✅" if exists else "❌"
-        text += f"{status} {repo}\n"
+    repos = rag.list_collections()
+    text = "📁 Проиндексированные репозитории:\n\n"
+    if not repos:
+        text += "Нет проиндексированных репозиториев."
+    else:
+        for repo in repos:
+            info = rag.get_collection_info(repo)
+            text += f"✅ {repo}: {info['vectors_count']} векторов\n"
     await update.message.reply_text(text)
 
 
@@ -77,10 +92,6 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     repo_name = args[0]
-    
-    if repo_name not in config.REPOS_WHITELIST:
-        await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
     
     progress_queue = queue.Queue()
     status_msg = await update.message.reply_text(f"🔄 Индексирую {repo_name}...")
@@ -155,7 +166,7 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         keyboard = [
             [InlineKeyboardButton(repo, callback_data=f"reindex:{repo}")]
-            for repo in config.REPOS_WHITELIST
+            for repo in rag.list_collections()
         ]
         await update.message.reply_text(
             "Выбери репозиторий для переиндексации:",
@@ -165,10 +176,6 @@ async def reindex_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     repo_name = args[0]
     
-    if repo_name not in config.REPOS_WHITELIST:
-        await update.message.reply_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
-    
     status_msg = await update.message.reply_text(f"🔄 Переиндексирую {repo_name}...")
     await _run_reindex(status_msg, repo_name)
 
@@ -177,7 +184,9 @@ async def _run_reindex(status_msg, repo_name: str):
     progress_queue = queue.Queue()
 
     try:
+        preserved_meta: dict = {}
         if rag.collection_exists(repo_name):
+            preserved_meta = filter_preserved_repo_metadata(get_collection_properties(repo_name))
             rag.delete_collection(repo_name)
 
         index_task = asyncio.create_task(_run_index_async(repo_name, resume=False, progress_queue=progress_queue))
@@ -192,6 +201,8 @@ async def _run_reindex(status_msg, repo_name: str):
         if "error" in result:
             await _safe_edit_text(status_msg, f"❌ Ошибка: {result['error']}")
         else:
+            if preserved_meta:
+                set_collection_properties(repo_name, preserved_meta)
             await _safe_edit_text(status_msg,
                 f"✅ Готово!\n"
                 f"Чанков: {result['chunks']}\n"
@@ -210,10 +221,6 @@ async def reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     repo_name = query.data.split(":", 1)[1]
 
-    if repo_name not in config.REPOS_WHITELIST:
-        await query.edit_message_text(f"Репозиторий {repo_name} не в белом списке.")
-        return
-
     await query.edit_message_text(f"🔄 Переиндексирую {repo_name}...")
     status_msg = query.message
     await _run_reindex(status_msg, repo_name)
@@ -224,15 +231,181 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(user.id if user else None):
         return
     text = "📊 Статус коллекций:\n\n"
-    
-    for repo in config.REPOS_WHITELIST:
-        if rag.collection_exists(repo):
+
+    collections = rag.list_collections()
+    if not collections:
+        text += "Нет коллекций."
+    else:
+        for repo in collections:
             info = rag.get_collection_info(repo)
             text += f"✅ {repo}: {info['vectors_count']} векторов\n"
-        else:
-            text += f"❌ {repo}: не создана\n"
-    
+
     await update.message.reply_text(text)
+
+
+async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает inline-кнопки для переключения режима работы бота."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+
+    use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await update.message.reply_text(
+        f"🔄 Режим работы: {current_mode}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ============ Whitelist Management Commands ============
+
+async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавляет пользователя в whitelist: /adduser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /adduser <user_id или @username>\n\n"
+            "Чтобы узнать user_id: перешлите любое сообщение от пользователя боту и используйте /id")
+        return
+
+    target = args[0]
+    
+    # Если передан username - пытаемся получить user_id через Telegram API
+    if target.startswith("@"):
+        # Попытка получить user_id по username (работает только если пользователь писал боту)
+        # Для упрощения - просто сохраняем как есть (Telegram username)
+        # В is_allowed нужно будет проверять и username
+        user_id = target[1:]  # Убираем @
+    else:
+        user_id = target
+
+    # Проверяем, что это число (или username)
+    if not user_id.isdigit() and not user_id.startswith("@"):
+        await update.message.reply_text("Укажите числовой user_id или username (с @)")
+        return
+
+    # Нормализуем - убираем @ для хранения
+    user_id_to_store = user_id.lstrip("@")
+    
+    added = config.add_whitelist_user(user_id_to_store)
+    if added:
+        await update.message.reply_text(f"✅ Пользователь {user_id} добавлен в whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {user_id} уже в whitelist.")
+
+
+async def removeuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет пользователя из whitelist: /removeuser <user_id или @username>"""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    args = _get_command_args(update, context)
+    if not args:
+        await update.message.reply_text("Usage: /removeuser <user_id или @username>")
+        return
+
+    target = args[0]
+    user_id_to_store = target.lstrip("@")
+    
+    removed = config.remove_whitelist_user(user_id_to_store)
+    if removed:
+        await update.message.reply_text(f"✅ Пользователь {target} удалён из whitelist.")
+    else:
+        await update.message.reply_text(f"ℹ️ Пользователь {target} не найден в whitelist.")
+
+
+async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает список пользователей в whitelist."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    users = config.TELEGRAM_WHITELIST_USERS
+    if not users:
+        await update.message.reply_text("ℹ️ Whitelist пуст (доступ открыт всем).")
+        return
+    
+    text = "📋 Пользователи в whitelist:\n\n" + "\n".join(f"• {u}" for u in sorted(users))
+    await update.message.reply_text(text)
+
+
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает информацию о пользователе: /id (в ответ на сообщение или в группе)."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        return
+    
+    msg = update.effective_message
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target = msg.reply_to_message.from_user
+    else:
+        target = user
+    
+    text = f"👤 Информация о пользователе:\n\n"
+    text += f"ID: <code>{target.id}</code>\n"
+    if target.username:
+        text += f"Username: @{target.username}\n"
+    if target.first_name:
+        text += f"Имя: {target.first_name}\n"
+    if target.last_name:
+        text += f"Фамилия: {target.last_name}\n"
+    
+    in_whitelist = str(target.id) in config.TELEGRAM_WHITELIST_USERS
+    text += f"\nВ whitelist: {'✅ Да' if in_whitelist else '❌ Нет'}"
+    
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
+async def mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие кнопок переключения режима."""
+    user = update.effective_user
+    if not is_allowed(user.id if user else None):
+        await update.callback_query.answer("Доступ запрещён.", show_alert=True)
+        return
+
+    query = update.callback_query
+    await query.answer()
+
+    mode = query.data.split(":", 1)[1]
+    use_two_agent = mode == "two_agent"
+    context.bot_data["use_two_agent"] = use_two_agent
+
+    current_mode = "Two-Agent" if use_two_agent else "Simple"
+
+    # Обновляем кнопки с новым состоянием
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{'✓ ' if use_two_agent else ''}Two-Agent",
+                callback_data="mode:two_agent"
+            ),
+            InlineKeyboardButton(
+                f"{'✓ ' if not use_two_agent else ''}Simple",
+                callback_data="mode:simple"
+            ),
+        ]
+    ]
+    await query.edit_message_text(
+        f"✅ Переключено на {current_mode} режим",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 
 # Макс. сообщений в контексте диалога для RAG (user + assistant пары)
@@ -240,12 +413,12 @@ _CHAT_HISTORY_LIMIT = 20
 
 
 def _telegram_html(text: str) -> str:
-    """Подготовка текста для Telegram HTML.
-    
-    - Конвертирует *bold* → <b>bold</b>
-    - Конвертирует _italic_ → <i>italic</i>
-    - Конвертирует `code` → <code>code</code>
-    - Блоки ```...``` → <pre>...</pre>
+    """Подготовка текста для Telegram HTML (подмножество Markdown).
+
+    - **жирный** → <b>
+    - *курсив* (одна пара звёздочек на строку) → <i>
+    - _курсив_ → <i>
+    - `код` → <code>, блоки ``` → <pre>
     - Экранирует <, >, & в обычном тексте
     """
     result = []
@@ -272,32 +445,43 @@ def _telegram_html(text: str) -> str:
                 i = end + 1
                 continue
         
-        # Bold: *...* (но не ** и не в начале строки как маркер списка)
+        # Markdown bold: **...**
+        if char == "*" and i + 1 < len(text) and text[i + 1] == "*":
+            end = text.find("**", i + 2)
+            if end != -1:
+                bold_content = text[i + 2:end]
+                if "\n" not in bold_content:
+                    result.append(f"<b>{html_escape(bold_content)}</b>")
+                    i = end + 2
+                    continue
+            result.append("*")
+            i += 1
+            continue
+        
+        # Markdown italic: *...* (не в начале строки — маркер списка)
         if char == "*":
-            # Skip ** (double asterisk)
-            if i + 1 < len(text) and text[i + 1] == "*":
-                result.append("*")
-                i += 1
-                continue
-            
-            # Skip * at start of line (list marker)
             prev_char = text[i - 1] if i > 0 else "\n"
             if prev_char == "\n" or (i == 0):
                 result.append("*")
                 i += 1
                 continue
-            
-            # Find matching * (must be on same line, no newline inside)
-            end = text.find("*", i + 1)
-            if end != -1 and end > i + 1:
-                bold_content = text[i + 1:end]
-                # Don't allow newlines inside bold
-                if "\n" not in bold_content:
-                    result.append(f"<b>{html_escape(bold_content)}</b>")
-                    i = end + 1
-                    continue
-            
-            # No matching * or invalid — just output the character
+            end = i + 1
+            closing = -1
+            while end < len(text):
+                if text[end] == "\n":
+                    break
+                if text[end] == "*":
+                    if end + 1 < len(text) and text[end + 1] == "*":
+                        end += 2
+                        continue
+                    closing = end
+                    break
+                end += 1
+            if closing != -1 and closing > i + 1:
+                italic_content = text[i + 1:closing]
+                result.append(f"<i>{html_escape(italic_content)}</i>")
+                i = closing + 1
+                continue
             result.append("*")
             i += 1
             continue
@@ -378,10 +562,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info("handle_message: skip empty/question")
         return
 
+    qerr = validate_user_question(question)
+    if qerr:
+        await msg.reply_text(qerr)
+        return
+
     status_queue = queue.Queue()
+    steps: list[str] = ["🤔 Думаю..."]
 
     def on_qdrant_status(text: str):
         status_queue.put(text)
+        steps.append(text)
 
     status_msg = await msg.reply_text("🤔 Думаю...")
 
@@ -390,12 +581,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = None
     session_data = {}
     loop = asyncio.get_event_loop()
+    use_two_agent = context.bot_data.get("use_two_agent", config.USE_TWO_AGENT_PIPELINE)
+    rag_mode_for_log = (
+        "two_agent"
+        if use_two_agent
+        else ("simple" if config.RAG_RUNTIME_MODE == "simple" else "agent")
+    )
 
     try:
-        future = loop.run_in_executor(
-            None,
-            lambda: rag.generate_answer(question, history=history, on_status=on_qdrant_status),
-        )
+        def run_rag():
+            if use_two_agent:
+                from rag.agent.pipeline import generate_answer_two_agent
+
+                return generate_answer_two_agent(
+                    question, history=history, on_status=on_qdrant_status
+                )
+            if config.RAG_RUNTIME_MODE == "simple":
+                return rag.generate_simple_answer(
+                    question,
+                    repo_name=None,
+                    top_k=config.RAG_SEARCH_TOP_K,
+                    max_chunks=10,
+                    model=config.OPENROUTER_MODEL,
+                    temperature=config.RAG_AGENT_TEMPERATURE,
+                    on_status=on_qdrant_status,
+                )
+            return rag.generate_answer(
+                question, history=history, on_status=on_qdrant_status
+            )
+
+        future = loop.run_in_executor(None, run_rag)
         while not future.done():
             try:
                 line = status_queue.get_nowait()
@@ -410,6 +625,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (pt or 0) > 0 or (ct or 0) > 0:
             status_text = f"✅ Готово. Вход: {pt or 0:,} ток., выход: {ct or 0:,} ток., всего: {(tt or (pt or 0) + (ct or 0)):,}"
         await _safe_edit_text(status_msg, status_text)
+        steps.append(status_text)
         formatted = _telegram_html(answer)
         try:
             await msg.reply_text(formatted, parse_mode=ParseMode.HTML)
@@ -426,12 +642,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         save_session({
             "ts": datetime.now(timezone.utc).isoformat(),
+            "source": "telegram",
             "user_id": user.id if user else None,
             "username": user.username if user else None,
             "question": question,
             "answer": answer,
             "duration_s": round(time.monotonic() - t0, 2),
+            "steps": steps,
             **session_data,
+            "rag_mode": rag_mode_for_log,
         })
 
 

@@ -75,7 +75,25 @@ User Message → Telegram Bot → RAG Pipeline → OpenRouter (LLM)
 | `/remove <repo>` | Удалить | handlers.py:remove_command |
 | `/reindex <repo>` | Переиндексировать | handlers.py:reindex_command |
 | `/status` | Статус коллекций | handlers.py:status_command |
+| `/mode` | Переключить режим (Two-Agent / Simple) | handlers.py:mode_command |
 | `<текст>` | Вопрос → RAG | handlers.py:handle_message |
+
+---
+
+## РЕЖИМЫ РАБОТЫ
+
+Бот поддерживает два режима обработки вопросов:
+
+| Режим | Описание |
+|-------|----------|
+| **Two-Agent** | Двухагентный пайплайн: Analyst планирует поиск → Answerer синтезирует ответ |
+| **Simple** | Одноагентный пайплайн: прямой RAG (generator.py) |
+
+### Переключение режима
+
+- **Команда `/mode`** — показывает inline-кнопки для выбора режима
+- **Дефолт при старте** — берётся из `config.USE_TWO_AGENT_PIPELINE` (`.env`)
+- **Хранение** — в `context.bot_data` (in-memory, сбрасывается при перезапуске бота)
 
 ---
 
@@ -132,6 +150,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### Docker (сборка + автозапуск)
+```bash
+docker compose up -d --build
+```
+- `.env` подхватывается из корня проекта
+- Репозитории монтируются из `REPOS_BASE_PATH` (из .env) в `/repos`
+- `restart: unless-stopped` — автоперезапуск при падении
+
 ### При изменении кода
 1. Изменения в .env → перезапуск бота
 2. Новый репозиторий → добавить в REPOS_WHITELIST
@@ -148,3 +174,20 @@ python main.py
 2. **OpenRouter** — единый API для embeddings и LLM
 3. **Простой chunking** — построчный с перекрытием, без сложных парсеров
 4. **Whitelist пользователей** — для безопасности в закрытом чате
+
+---
+
+## ИМЕНОВАНИЕ ФАЙЛОВ И ПАПОК
+
+### UI (`ui/`)
+- **Все файлы и папки** именуются через `kebab-case` (например, `repo-card.tsx`, `use-repo-describe.ts`)
+- Исключение: конфигурационные файлы с собственными соглашениями (`.env`, `.gitignore`, `package.json`)
+
+### Backend (Python)
+- Используется `snake_case` для файлов и функций
+
+---
+## UI / Темизация (shadcn)
+- Интерфейс собирается из компонентов `shadcn` (в т.ч. локальные re-export’ы в `ui/src/components/ui/*`). Компоненты не “дописываются” костылями и не переиспользуются только ради изменения темы.
+- Запрещены хардкодные подмены базовой темы и палитры (например, ручные переопределения `:root/.dark` и `@theme inline`, а также массовые замены на `bg-slate-*`, `text-slate-*`, `bg-blue-*` внутри экранов). Для цвета используются CSS-переменные shadcn (`bg-background`, `text-foreground`, `border-border`, `bg-primary`, `text-muted-foreground` и т.д.).
+- Разрешены только точечные, минимальные кастомизации поведения/разметки (spacing, размеры, дополнительные `className`) без изменения общей системы тем.
