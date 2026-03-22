@@ -126,23 +126,32 @@ RAG_AGENT_TIMEOUT = int(os.getenv("RAG_AGENT_TIMEOUT", "60"))
 # Длина превью результата tool_call в session log
 RAG_LOG_RESULT_PREVIEW_LEN = int(os.getenv("RAG_LOG_RESULT_PREVIEW_LEN", "300"))
 
+# --- Simple mode: Query Rewriting ---
+# Быстрая/дешёвая модель для переписывания вопроса пользователя в ключевые слова
+# перед векторным поиском (шаг Query Rewriting в generate_simple_answer).
+SIMPLE_REWRITE_MODEL = os.getenv("SIMPLE_REWRITE_MODEL", "google/gemini-2.5-flash")
+
 # --- Two-Agent Pipeline ---
 # Feature flag: использовать двухагентный пайплайн
 USE_TWO_AGENT_PIPELINE = os.getenv("USE_TWO_AGENT_PIPELINE", "true").lower() in ("true", "1", "yes")
 
-# Модель для Analyst (аналитик, планировщик поиска)
-ANALYST_MODEL = os.getenv("ANALYST_MODEL", "openrouter/z-ai/glm-4-flash")
+# Модель для Analyst (аналитик, планировщик поиска) — дешёвая и быстрая
+ANALYST_MODEL = os.getenv("ANALYST_MODEL", "google/gemini-2.5-flash")
 ANALYST_TEMPERATURE = float(os.getenv("ANALYST_TEMPERATURE", "0.3"))
 ANALYST_MAX_TOKENS = int(os.getenv("ANALYST_MAX_TOKENS", "2000"))
 ANALYST_TIMEOUT = int(os.getenv("ANALYST_TIMEOUT", "60"))
 ANALYST_HISTORY_LIMIT = int(os.getenv("ANALYST_HISTORY_LIMIT", "20"))
 
-# Модель для Answerer (эксперт, синтез ответа)
-ANSWERER_MODEL = os.getenv("ANSWERER_MODEL", "openrouter/z-ai/glm-4-plus")
+# Модель для Answerer (эксперт, синтез ответа) — "думающая" модель
+# Для думающих моделей (o3-mini, claude-3.7-sonnet) используется max_completion_tokens
+# вместо max_tokens, чтобы ограничить длину "раздумий".
+ANSWERER_MODEL = os.getenv("ANSWERER_MODEL", "openai/o3-mini")
 ANSWERER_TEMPERATURE = float(os.getenv("ANSWERER_TEMPERATURE", "0.1"))
-ANSWERER_MAX_TOKENS = int(os.getenv("ANSWERER_MAX_TOKENS", "3000"))
-ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "90"))
+ANSWERER_MAX_TOKENS = int(os.getenv("ANSWERER_MAX_TOKENS", "4000"))
+# Ограничение "раздумий" для моделей с chain-of-thought (0 = не передавать параметр)
+ANSWERER_MAX_REASONING_TOKENS = int(os.getenv("ANSWERER_MAX_REASONING_TOKENS", "2000"))
+ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "120"))
 ANSWERER_HISTORY_LIMIT = int(os.getenv("ANSWERER_HISTORY_LIMIT", "20"))
 
-# Макс. итераций в двухагентном пайплайне
-PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "2"))
+# Макс. итераций в двухагентном пайплайне — увеличено для глубокого ресёрча
+PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "4"))
