@@ -182,6 +182,7 @@ docker compose up -d --build
 ### UI (`ui/`)
 - **Все файлы и папки** именуются через `kebab-case` (например, `repo-card.tsx`, `use-repo-describe.ts`)
 - Исключение: конфигурационные файлы с собственными соглашениями (`.env`, `.gitignore`, `package.json`)
+- **Обработчики событий:** `onChange`, `onClick`, `onKeyDown`, `onValueChange` и т.п. не пишем инлайн в JSX — выносим в функции в теле компонента; имена по смыслу с суффиксом `Handler` (например `onQueryChangeHandler`, `onSearchClickHandler`). Подробнее — правило Cursor `.cursor/rules/ui-event-handlers.mdc`.
 
 ### Backend (Python)
 - Используется `snake_case` для файлов и функций
