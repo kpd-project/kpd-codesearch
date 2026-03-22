@@ -127,9 +127,9 @@
     @apply font-sans;
   }
 
-  /* Тонкий исчезающий скролл для ScrollArea (виден при наведении на область или на трек, при прокрутке) */
+  /* ScrollArea: трек слегка виден всегда; на hover/прокрутке — полностью (Base UI + кастомный трек) */
   [data-slot="scroll-area-scrollbar"] {
-    opacity: 0;
+    opacity: 0.5;
     transition: opacity 160ms ease;
     pointer-events: auto;
   }
