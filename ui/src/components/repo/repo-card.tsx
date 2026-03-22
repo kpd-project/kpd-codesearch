@@ -62,7 +62,15 @@ export function RepoCard({
               {title ? (
                 <span className={titleClass}>{title}</span>
               ) : (
-                <span className={titleClass}>Идентификатор: {repo.name}</span>
+                <span
+                  className={cn(
+                    "min-w-0 truncate font-mono text-lg font-semibold",
+                    inactive ? "text-muted-foreground" : "text-foreground"
+                  )}
+                  title={repo.name}
+                >
+                  {repo.name}
+                </span>
               )}
               {repo.status === "indexing" && (
                 <Badge

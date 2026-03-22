@@ -31,6 +31,13 @@ def _normalize_relative_path(value: str | None) -> str | None:
     return normalized.lstrip("/")
 
 
+def _display_name_from_repo_id(name: str) -> str:
+    """Название карточки из идентификатора: «-» и «_» → пробелы, верхний регистр."""
+    s = name.replace("-", " ").replace("_", " ")
+    s = " ".join(s.split())
+    return s.upper()
+
+
 def _embedder_model_from_sources(props: dict) -> str | None:
     v = props.get("embedder_model")
     if v is None or v == "":
@@ -194,7 +201,10 @@ class State:
         except Exception:
             relative_path = _normalize_relative_path(path)
 
-        props: dict = {"enabled": False}
+        props: dict = {
+            "enabled": False,
+            "display_name": _display_name_from_repo_id(name),
+        }
         if relative_path:
             props["relative_path"] = relative_path
         else:
