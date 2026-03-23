@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <StatusProvider>
         <Routes>
-          <Route path="/" element={<App />} />
+          <Route path="/*" element={<App />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/chat-logs" element={<ChatLogsPage />} />
         </Routes>

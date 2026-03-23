@@ -52,3 +52,38 @@ export interface RepoFolderCandidate {
   already_added: boolean;
   collection_name: string | null;
 }
+
+/** Причина пропуска файла чанкером. */
+export type SkipReason =
+  | 'ignored_directory'
+  | 'ignored_name'
+  | 'ignored_extension'
+  | 'gitignore'
+  | 'unsupported_extension'
+  | 'node_modules_path';
+
+/** Узел дерева файлов репозитория (ответ GET /api/repos/{name}/file-tree). */
+export interface FileTreeNode {
+  type: 'file' | 'dir';
+  name: string;
+  /** Относительный POSIX-путь от корня репозитория. */
+  path: string;
+  /** Только для file, с точкой, нижний регистр (.tsx). null если нет суффикса. */
+  extension: string | null;
+  /** true = войдёт в индекс; false = пропускается; null = обычная папка. */
+  indexed: boolean | null;
+  skip_reason: SkipReason | null;
+  /** Для dir — дочерние узлы; у IGNORE_DIRS-заглушки []; у file null. */
+  children: FileTreeNode[] | null;
+}
+
+export interface FileTreeResponse {
+  tree: FileTreeNode[];
+  meta: {
+    repo: string;
+    root_path: string;
+    generated_at: string;
+    indexed_file_count: number;
+    skipped_file_count: number;
+  };
+}

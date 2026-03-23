@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Chat } from "@/components/chat";
 import { Repositories } from "@/components/repositories";
 import { useStatus } from "@/hooks/use-api";
@@ -9,49 +9,20 @@ import { Circle, Settings, HelpCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiUrl } from "@/lib/api-url";
+import { TestsLayout } from "@/pages/tests/tests-layout";
 
 type RagQueryMode = "simple" | "agent";
 
-function RagModeToolbar({
-  ragMode,
-  onRagModeChange,
-  disabled,
-}: {
-  ragMode: RagQueryMode;
-  onRagModeChange: (m: RagQueryMode) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div
-      className="inline-flex items-center rounded-md border border-border bg-muted/50 p-0.5 gap-0.5 shrink-0"
-      title="Простой: один поиск по векторам и ответ. Агент: цикл с инструментами и финальный ответ."
-    >
-      <Button
-        type="button"
-        size="sm"
-        variant={ragMode === "simple" ? "default" : "ghost"}
-        className="h-7 px-2.5 text-xs"
-        disabled={disabled}
-        onClick={() => onRagModeChange("simple")}
-      >
-        Простой
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant={ragMode === "agent" ? "default" : "ghost"}
-        className="h-7 px-2.5 text-xs"
-        disabled={disabled}
-        onClick={() => onRagModeChange("agent")}
-      >
-        Агент
-      </Button>
-    </div>
-  );
+function getActiveTab(pathname: string): string {
+  if (pathname.startsWith("/chat")) return "chat";
+  if (pathname.startsWith("/tests")) return "tests";
+  return "repositories";
 }
 
 function AppShell() {
-  const [activeTab, setActiveTab] = useState("chat");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeTab = getActiveTab(location.pathname);
   const [ragSaving, setRagSaving] = useState(false);
   const { status, loading, refetch, wsConnected } = useStatus();
 
@@ -84,8 +55,17 @@ function AppShell() {
     [ragMode, refetch]
   );
 
+  const handleTabChange = useCallback(
+    (value: string) => {
+      if (value === "repositories") navigate("/");
+      else if (value === "chat") navigate("/chat");
+      else if (value === "tests") navigate("/tests/vector-search");
+    },
+    [navigate]
+  );
+
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="h-screen flex flex-col bg-background text-foreground">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="h-screen flex flex-col bg-background text-foreground">
       {/* Header с навигацией */}
       <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-background shrink-0">
         <div className="flex items-center gap-6">
@@ -99,19 +79,17 @@ function AppShell() {
             </span>
             <h1 className="text-xl font-semibold text-primary" title="ASTRA-M">АСТРА-М</h1>
           </div>
-          <TabsList className="h-9 bg-transparent p-0 gap-0 border-0">
-            <TabsTrigger value="chat" className="rounded-md px-3 py-1.5 data-[state=active]:bg-muted">Чат</TabsTrigger>
-            <TabsTrigger value="repositories" className="rounded-md px-3 py-1.5 data-[state=active]:bg-muted">Репозитории</TabsTrigger>
+          <TabsList className="h-8 bg-transparent p-0 gap-0 border-0">
+            <TabsTrigger value="repositories" className="h-8 rounded-md px-3 py-0 text-sm data-[state=active]:bg-muted">
+              Репозитории
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="h-8 rounded-md px-3 py-0 text-sm data-[state=active]:bg-muted">
+              Чат
+            </TabsTrigger>
+            <TabsTrigger value="tests" className="h-8 rounded-md px-3 py-0 text-sm data-[state=active]:bg-muted">
+              Тесты
+            </TabsTrigger>
           </TabsList>
-          {activeTab === "chat" ? (
-            <div className="flex items-center ml-3 pl-3 border-l border-border min-h-9">
-              <RagModeToolbar
-                ragMode={ragMode}
-                onRagModeChange={setRagMode}
-                disabled={loading || ragSaving}
-              />
-            </div>
-          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Link to="/settings">
@@ -128,14 +106,23 @@ function AppShell() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        <TabsContent value="chat" className="flex-1 m-0 min-h-0" keepMounted>
-          <Chat className="h-full" />
-        </TabsContent>
-
         <TabsContent value="repositories" className="flex-1 m-0 min-h-0" keepMounted>
           <ScrollArea className="h-full min-h-0">
             <Repositories status={status} loading={loading} refetch={refetch} />
           </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="chat" className="flex-1 m-0 min-h-0" keepMounted>
+          <Chat
+            className="h-full"
+            ragMode={ragMode}
+            onRagModeChange={setRagMode}
+            ragModeDisabled={loading || ragSaving}
+          />
+        </TabsContent>
+
+        <TabsContent value="tests" className="flex-1 m-0 min-h-0">
+          <TestsLayout />
         </TabsContent>
       </main>
 

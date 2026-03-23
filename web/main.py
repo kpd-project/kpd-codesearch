@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -126,6 +126,16 @@ if static_path.exists():
         @app.get("/favicon.svg")
         async def favicon():
             return FileResponse(str(favicon_path), media_type="image/svg+xml")
+
+
+_index_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(request: Request, full_path: str):
+    """SPA catch-all: отдаём index.html для любого фронт-роута."""
+    if _index_path.exists():
+        return HTMLResponse(_index_path.read_text(encoding="utf-8"))
+    return HTMLResponse("Not found", status_code=404)
 
 
 if __name__ == "__main__":
