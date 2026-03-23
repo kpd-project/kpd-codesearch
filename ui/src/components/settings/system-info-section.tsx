@@ -7,7 +7,7 @@ interface SystemConfig {
   qdrant: { url: string; api_key_masked: string; has_api_key: boolean };
   embeddings: { model: string; dimension: number };
   repos: { base_path: string };
-  openrouter: { url: string; api_key_masked: string; has_api_key: boolean };
+  llm: { base_url: string; api_key_masked: string; has_api_key: boolean };
 }
 
 export function SystemInfoSection() {
@@ -73,12 +73,12 @@ export function SystemInfoSection() {
         <div className="space-y-2">
           <div className="flex items-center gap-2 font-medium">
             <Key className="w-4 h-4" />
-            OpenRouter
+            LLM (OpenAI-compatible)
           </div>
-          <InfoRow label="URL" value={config?.openrouter.url} />
+          <InfoRow label="Base URL" value={config?.llm.base_url} />
           <InfoRow
             label="API Key"
-            value={config?.openrouter.has_api_key ? "••••••••" : "не задан"}
+            value={config?.llm.has_api_key ? "••••••••" : "не задан"}
           />
         </div>
 

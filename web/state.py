@@ -77,7 +77,7 @@ def _resolve_repo_abs_path(repo_name: str, props: dict) -> str:
 @dataclass
 class RuntimeSettings:
     """Runtime configurable settings."""
-    model: str = config.OPENROUTER_MODEL
+    model: str = config.OPENAI_MODEL
     temperature: float = 0.1
     top_k: int = 10
     max_chunks: int = 10

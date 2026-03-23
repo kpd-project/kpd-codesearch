@@ -4,7 +4,7 @@ interface SystemConfig {
   qdrant: { url: string; api_key_masked: string; has_api_key: boolean };
   embeddings: { model: string; dimension: number };
   repos: { base_path: string };
-  openrouter: { url: string; api_key_masked: string; has_api_key: boolean };
+  llm: { base_url: string; api_key_masked: string; has_api_key: boolean };
 }
 
 export function useSystemConfig() {

@@ -5,7 +5,7 @@
 ## Возможности
 
 - Индексация нескольких репозиториев (каждый — отдельная коллекция в Qdrant)
-- Ответы на вопросы о коде через LLM (OpenRouter)
+- Ответы на вопросы о коде через LLM (OpenAI-compatible API)
 - Управление репозиториями в UI: добавление, удаление, переиндексация, описание
 - Два режима пайплайна: Two-Agent (аналитик + ответчик) и Simple (прямой RAG)
 - Режим RAG в runtime: **простой** (поиск + ответ) или **агент** (инструменты), переключается в настройках
@@ -50,10 +50,10 @@ pip install -r requirements.txt
 Скопируйте `.env.example` в `.env` и заполните:
 
 ```env
-# OpenRouter
-OPENROUTER_API_URL=https://openrouter.ai/api/v1
-OPENROUTER_API_KEY=your_openrouter_key
-OPENROUTER_MODEL=google/gemini-2.0-flash-001
+# LLM (OpenAI-compatible: OpenRouter, vLLM, корп. /openai/v1, …)
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_API_KEY=your_key
+OPENAI_MODEL=google/gemini-2.0-flash-001
 
 # Embeddings
 EMBEDDINGS_MODEL=text-embedding-3-small
@@ -156,7 +156,7 @@ kpd-codesearch/
 
 - Python 3.11+ (treesitter-chunker)
 - Qdrant (удалённый или в Docker)
-- Ключ OpenRouter API
+- Ключ к LLM (OpenAI-compatible endpoint)
 
 ## Лицензия
 

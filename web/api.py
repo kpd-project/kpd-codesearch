@@ -348,13 +348,13 @@ async def describe_repo(name: str):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+                f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                    "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": config.OPENROUTER_MODEL,
+                    "model": config.OPENAI_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 200,
                     "temperature": 0.3,
@@ -402,10 +402,10 @@ async def get_system_config():
         "repos": {
             "base_path": str(config.REPOS_BASE_PATH),
         },
-        "openrouter": {
-            "url": config.OPENROUTER_API_URL,
-            "api_key_masked": "•" * 8 if config.OPENROUTER_API_KEY else "",
-            "has_api_key": bool(config.OPENROUTER_API_KEY),
+        "llm": {
+            "base_url": config.OPENAI_BASE_URL,
+            "api_key_masked": "•" * 8 if config.OPENAI_API_KEY else "",
+            "has_api_key": bool(config.OPENAI_API_KEY),
         },
     }
 

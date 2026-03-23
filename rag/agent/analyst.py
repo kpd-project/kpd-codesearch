@@ -34,9 +34,9 @@ class AnalystAgent:
         messages.append({"role": "user", "content": user_content})
         
         response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={

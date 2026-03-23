@@ -211,13 +211,13 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
             logger.debug("LLM request iteration %d, messages=%d", iteration + 1, len(messages))
             # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
             response = requests.post(
-                f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+                f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                    "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": config.OPENROUTER_MODEL,
+                    "model": config.OPENAI_MODEL,
                     "messages": messages,
                     "tools": TOOLS,
                     "tool_choice": "auto",
@@ -283,13 +283,13 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
     })
     try:
         response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": config.OPENROUTER_MODEL,
+                "model": config.OPENAI_MODEL,
                 "messages": messages,
                 "max_tokens": config.RAG_AGENT_FINAL_MAX_TOKENS,
                 "temperature": config.RAG_AGENT_TEMPERATURE,
@@ -326,9 +326,9 @@ def _rewrite_query_for_search(question: str, model: str, timeout: int) -> str:
     """
     try:
         response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
@@ -364,7 +364,7 @@ async def generate_response(
     Последним элементом генератора выдаёт dict ``{"__usage__": {...}}``
     с данными о потреблении токенов (если провайдер их вернул).
     """
-    model = model or config.OPENROUTER_MODEL
+    model = model or config.OPENAI_MODEL
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
         for c in context_chunks
@@ -375,9 +375,9 @@ async def generate_response(
     async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
         async with client.stream(
             "POST",
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
@@ -393,7 +393,7 @@ async def generate_response(
             },
         ) as resp:
             if resp.status_code != 200:
-                raise RuntimeError(f"OpenRouter error {resp.status_code}: {await resp.aread()}")
+                raise RuntimeError(f"LLM API error {resp.status_code}: {await resp.aread()}")
             async for line in resp.aiter_lines():
                 if line.startswith("data: ") and line != "data: [DONE]":
                     try:
@@ -446,13 +446,13 @@ def generate_simple_answer(
             "Переформулируйте вопрос или проверьте, что репозитории проиндексированы."
         )
         meta = simple_session_metadata()
-        meta["model_primary"] = model or config.OPENROUTER_MODEL
+        meta["model_primary"] = model or config.OPENAI_MODEL
         return msg, meta
 
     if on_status:
         on_status("✍️ Формирую ответ…")
 
-    mdl = model or config.OPENROUTER_MODEL
+    mdl = model or config.OPENAI_MODEL
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
         for c in chunks
@@ -461,9 +461,9 @@ def generate_simple_answer(
 
     try:
         response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json={
@@ -514,12 +514,12 @@ def _make_session_data(
     """Метаданные для лога: в умном режиме — две модели (цикл агента + финальный проход);
     в простом — только model_primary, model_secondary не пишем."""
     data: dict = {
-        "model_primary": config.OPENROUTER_MODEL,
+        "model_primary": config.OPENAI_MODEL,
         "iterations": iterations,
         "tool_calls": tool_calls_log,
     }
     if not simple:
-        data["model_secondary"] = config.OPENROUTER_MODEL
+        data["model_secondary"] = config.OPENAI_MODEL
     if usage:
         data["usage"] = usage
     return data

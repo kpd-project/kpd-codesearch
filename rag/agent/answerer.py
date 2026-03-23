@@ -85,14 +85,14 @@ class AnswererAgent:
             "temperature": self.temperature,
         }
         # Ограничиваем "раздумья" для think-моделей (o3-mini, claude-3.7-sonnet и др.)
-        # через параметр max_completion_tokens OpenRouter (включает COT + итоговый ответ).
+        # через параметр max_completion_tokens (OpenAI-compatible API; COT + итоговый ответ).
         if self.max_reasoning_tokens > 0:
             payload["max_completion_tokens"] = self.max_tokens + self.max_reasoning_tokens
 
         response = requests.post(
-            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
             headers={
-                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
             json=payload,
