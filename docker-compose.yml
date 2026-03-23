@@ -1,9 +1,10 @@
-# LCPRO — автозапуск Telegram RAG-бота
+# Astra M — базовый compose (бот + облачный Qdrant из .env)
+name: astra-m
 services:
-  lcpro:
+  astra-m-bot:
     build: .
-    image: lcpro-bot:latest
-    container_name: lcpro
+    image: astra-m-bot:latest
+    container_name: astra-m-bot
     restart: unless-stopped
     env_file: .env
     environment:

@@ -120,6 +120,49 @@ Python, JavaScript, TypeScript уже встроены в wheels.
 python main.py
 ```
 
+## Docker Compose: 2 варианта деплоя
+
+Базовый файл `docker-compose.yml` поднимает только бота и использует `QDRANT_URL` из `.env` (обычно облачный Qdrant).
+
+### Вариант A: облачный Qdrant (без локального контейнера)
+
+1) Укажите в `.env`:
+
+```env
+QDRANT_URL=https://your-cloud-qdrant
+QDRANT_API_KEY=your_key_if_needed
+```
+
+2) Запустите:
+
+```bash
+docker compose up -d --build
+```
+
+### Вариант B: локальный Qdrant в Docker
+
+Используется `docker-compose.local-qdrant.yml` как override:
+- поднимается контейнер `qdrant/qdrant`
+- имя контейнера Qdrant: `astra-m-qdrant`
+- имя volume для данных: `astra-m-qdrant-storage`
+- бот автоматически переключается на `QDRANT_URL=http://qdrant:6333`
+- порт Qdrant пробрасывается наружу: `6333` (HTTP) и `6334` (gRPC)
+
+Запуск:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local-qdrant.yml up -d --build
+```
+
+Открыть Qdrant с хоста можно по адресу:
+- `http://localhost:6333`
+
+Остановка и удаление контейнеров:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local-qdrant.yml down
+```
+
 ## Структура проекта
 
 ```
