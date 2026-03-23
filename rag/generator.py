@@ -311,6 +311,47 @@ RAG_CONTEXT_SYSTEM = (
     "Ответ в Markdown."
 )
 
+_REWRITE_SYSTEM = (
+    "Ты помощник по поиску в кодовой базе. "
+    "Получаешь вопрос пользователя и возвращаешь ТОЛЬКО 2-4 ключевых слова/термина на английском "
+    "для поиска по коду (названия функций, классов, методов, паттернов). "
+    "Без объяснений, только слова через пробел."
+)
+
+
+def _rewrite_query_for_search(question: str, model: str, timeout: int) -> str:
+    """Быстрое переписывание вопроса в ключевые слова для векторного поиска.
+
+    При ошибке — возвращает исходный вопрос как fallback.
+    """
+    try:
+        response = requests.post(
+            f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": _REWRITE_SYSTEM},
+                    {"role": "user", "content": question},
+                ],
+                "max_tokens": 60,
+                "temperature": 0.0,
+            },
+            timeout=timeout,
+            verify=False,
+        )
+        if response.status_code == 200:
+            content = response.json()["choices"][0]["message"].get("content", "").strip()
+            if content:
+                logger.debug("Query rewrite: %r -> %r", question[:80], content)
+                return content
+    except Exception as e:
+        logger.warning("Query rewrite failed, fallback to original: %s", e)
+    return question
+
 
 async def generate_response(
     query: str,
@@ -368,19 +409,25 @@ def generate_simple_answer(
     model: str | None = None,
     temperature: float = 0.1,
     on_status=None,
+    rewrite_model: str | None = None,
 ) -> tuple[str, dict]:
-    """Синхронный простой RAG: один векторный поиск + один ответ LLM (без агента)."""
+    """Синхронный простой RAG: Query Rewriting → один векторный поиск → один ответ LLM."""
     from .retriever import search_all_repos, search_in_repo
 
     if on_status:
         on_status("🔍 Ищу фрагменты кода…")
 
+    # Query Rewriting: переписываем вопрос в ключевые слова для векторного поиска.
+    # Дешевая/быстрая модель извлекает технические термины — вектор совпадет с чанками кода.
+    rw_model = rewrite_model or config.SIMPLE_REWRITE_MODEL
+    search_query = _rewrite_query_for_search(question, rw_model, timeout=config.RAG_AGENT_TIMEOUT)
+
     if repo_name:
-        chunks = search_in_repo(repo_name, question, top_k)
+        chunks = search_in_repo(repo_name, search_query, top_k)
         for c in chunks:
             c["repo"] = repo_name
     else:
-        chunks = search_all_repos(question, top_k)
+        chunks = search_all_repos(search_query, top_k)
 
     chunks = chunks[:max_chunks]
 

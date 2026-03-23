@@ -31,18 +31,10 @@ class SearchResult(BaseModel):
     score: float = Field(description="Релевантность результата")
 
 
-class SummarizedContext(BaseModel):
-    summary: str = Field(description="Сжатое описание найденного")
-    citations: list[str] = Field(default_factory=list, description="Ключевые фрагменты кода")
-    files_involved: list[str] = Field(default_factory=list, description="Затронутые файлы")
-    confidence: float = Field(default=0.8, description="Уверенность в релевантности")
-
-
 class PipelineState(BaseModel):
     iteration: int = Field(default=1, description="Текущая итерация")
     original_question: str = Field(description="Исходный вопрос пользователя")
     analyst_response: Optional[AnalystResponse] = Field(default=None)
     search_results: list[SearchResult] = Field(default_factory=list)
-    summarized_context: Optional[SummarizedContext] = Field(default=None)
     answerer_response: Optional[AnswererResponse] = Field(default=None)
     total_tokens: dict = Field(default_factory=lambda: {"analyst": 0, "answerer": 0, "total": 0})
