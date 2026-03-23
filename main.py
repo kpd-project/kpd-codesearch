@@ -18,7 +18,7 @@ logging.getLogger("langchain_community").setLevel(logging.WARNING)
 
 def run_web():
     """Run FastAPI web server."""
-    logger.info("Starting Web UI on http://0.0.0.0:8000")
+    logger.info("Starting Web UI on http://localhost:8000")
     uvicorn.run(
         fastapi_app,
         host="0.0.0.0",
@@ -29,7 +29,7 @@ def run_web():
 
 def main():
     logger.info("=" * 50)
-    logger.info("KPD CodeSearch - Starting Web UI")
+    logger.info("ASTRA-M CodeSearch - Starting Web UI")
     logger.info("=" * 50)
     try:
         run_web()

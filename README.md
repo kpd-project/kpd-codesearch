@@ -1,4 +1,4 @@
-# KPD CodeSearch
+# АСТРА-М CodeSearch (ASTRA-M)
 
 Веб-приложение для ответов на вопросы о коде с использованием RAG (индексация в Qdrant, чат в браузере).
 
@@ -41,7 +41,7 @@
 
 ```bash
 git clone <repo-url>
-cd kpd-codesearch
+cd astra-m-codesearch
 pip install -r requirements.txt
 ```
 
@@ -60,12 +60,12 @@ EMBEDDINGS_MODEL=text-embedding-3-small
 EMBEDDINGS_DIMENSION=1536
 
 # Qdrant
-QDRANT_URL=https://qdrant.gotskin.ru
+QDRANT_URL=https://qdrant.yoursite.ru
 QDRANT_API_KEY=your_qdrant_key
 
 # Repos
-REPOS_BASE_PATH=d:/kpd-project
-REPOS_WHITELIST=kpd-backend,kpd-frontend,kpd-se,kpd-landing,kpd-pdf-2
+REPOS_BASE_PATH=d:/projects
+REPOS_WHITELIST=backend,frontend,services-pdf
 
 # Mode
 USE_TWO_AGENT_PIPELINE=true
@@ -135,7 +135,7 @@ docker compose -f docker-compose.yml -f docker-compose.local-qdrant.yml down
 ## Структура проекта
 
 ```
-kpd-codesearch/
+astra-m-codesearch/
 ├── .env                  # Конфигурация (локально)
 ├── .env.example          # Шаблон
 ├── requirements.txt

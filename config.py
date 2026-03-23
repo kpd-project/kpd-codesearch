@@ -12,10 +12,10 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "").strip() or "google/gemini-2.5-flash
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "openai/text-embedding-3-small")
 EMBEDDINGS_DIMENSION = int(os.getenv("EMBEDDINGS_DIMENSION", "1536"))
 
-QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.gotskin.ru")
+QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.yoursite.ru")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/kpd-project"))
+REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/projects"))
 REPOS_WHITELIST = [
     r.strip() for r in os.getenv("REPOS_WHITELIST", "").split(",") if r.strip()
 ]
