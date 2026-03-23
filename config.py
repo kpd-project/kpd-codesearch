@@ -76,7 +76,7 @@ CHUNK_SIZE = 1500
 
 # Поведенческая часть системного промпта агента (персона + правила)
 # Техническая часть (BOT_CONTEXT) добавляется в generator.py автоматически
-_PROMPT_FILE = Path(__file__).parent / "system_prompt.txt"
+_PROMPT_FILE = Path(__file__).parent / "prompts" / "system_prompt.txt"
 AGENT_SYSTEM_PROMPT = _PROMPT_FILE.read_text(encoding="utf-8").strip()
 CHUNK_OVERLAP = 200
 
