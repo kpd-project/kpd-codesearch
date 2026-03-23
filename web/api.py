@@ -402,11 +402,6 @@ async def get_system_config():
         "repos": {
             "base_path": str(config.REPOS_BASE_PATH),
         },
-        "telegram": {
-            "bot_token_masked": "•" * 8 if config.TELEGRAM_BOT_TOKEN else "",
-            "has_bot_token": bool(config.TELEGRAM_BOT_TOKEN),
-            "whitelist_users": list(config.TELEGRAM_WHITELIST_USERS),
-        },
         "openrouter": {
             "url": config.OPENROUTER_API_URL,
             "api_key_masked": "•" * 8 if config.OPENROUTER_API_KEY else "",
@@ -466,7 +461,7 @@ def _sse_chunk_answer(text: str, chunk_size: int = 72) -> list[str]:
 
 @router.post("/api/query")
 async def query(request: QueryRequest):
-    """RAG: простой (поиск + один ответ) или агентный цикл как в Telegram — SSE."""
+    """RAG: простой (поиск + один ответ) или агентный цикл — ответ через SSE."""
     qerr = validate_user_question(request.message)
     if qerr:
         raise HTTPException(status_code=400, detail=qerr)

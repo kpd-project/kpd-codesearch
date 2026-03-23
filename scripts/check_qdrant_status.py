@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проверка статуса коллекций в Qdrant — то же, что /status в боте. Запуск: python scripts/check_qdrant_status.py"""
+"""Проверка статуса коллекций в Qdrant (сопоставьте с UI/API). Запуск: python scripts/check_qdrant_status.py"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -15,7 +15,7 @@ def main():
         for repo in collections:
             info = rag.get_collection_info(repo)
             print(f"  {repo}: vectors_count={info['vectors_count']}, points_count={info['points_count']}")
-    print("\nЕсли числа совпадают с ответом бота — /status говорит правду.")
+    print("\nЕсли числа совпадают со статусом в веб-интерфейсе — данные согласованы.")
 
 if __name__ == "__main__":
     main()

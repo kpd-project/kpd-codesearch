@@ -23,7 +23,7 @@ interface AnswerFooterMeta {
 interface Message {
     role: 'user' | 'assistant';
     content: string;
-    /** Ход агента (как в Telegram) до появления текста ответа */
+    /** Ход агента до появления текста ответа */
     status?: string;
     answerFooter?: AnswerFooterMeta;
 }

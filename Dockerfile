@@ -1,4 +1,4 @@
-# LCPRO — Telegram RAG-бот для кодовой базы KPD
+# LCPRO — веб-приложение RAG для кодовой базы KPD
 FROM python:3.12-slim
 
 WORKDIR /app

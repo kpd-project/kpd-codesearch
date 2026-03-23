@@ -1,4 +1,4 @@
-# Astra M — базовый compose (бот + облачный Qdrant из .env)
+# Astra M — базовый compose (приложение + облачный Qdrant из .env)
 version: '3.8'
 services:
   astra-m-bot:

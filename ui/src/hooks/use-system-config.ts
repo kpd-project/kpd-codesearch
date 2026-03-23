@@ -4,7 +4,6 @@ interface SystemConfig {
   qdrant: { url: string; api_key_masked: string; has_api_key: boolean };
   embeddings: { model: string; dimension: number };
   repos: { base_path: string };
-  telegram: { has_bot_token: boolean; whitelist_users: string[] };
   openrouter: { url: string; api_key_masked: string; has_api_key: boolean };
 }
 
