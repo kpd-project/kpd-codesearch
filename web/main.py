@@ -79,8 +79,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve main page."""
-    # Serve from ui/dist (built React app)
-    index_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+    # Serve from frontend/dist (built React app)
+    index_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
     
     if index_path.exists():
         return index_path.read_text(encoding="utf-8")
@@ -105,7 +105,7 @@ async def root():
     <body>
         <div class="container">
             <h1>KPD CodeSearch Web UI</h1>
-            <p>Build the frontend first: <code>cd ui && npm run build</code></p>
+            <p>Build the frontend first: <code>cd frontend && npm run build</code></p>
             <p>Then restart the server.</p>
         </div>
     </body>
@@ -113,8 +113,8 @@ async def root():
     """
 
 
-# Serve static files from ui/dist — Vite builds with /assets/ and /favicon.svg at root
-static_path = Path(__file__).parent.parent / "ui" / "dist"
+# Serve static files from frontend/dist — Vite builds with /assets/ and /favicon.svg at root
+static_path = Path(__file__).parent.parent / "frontend" / "dist"
 if static_path.exists():
     assets_path = static_path / "assets"
     if assets_path.exists():
@@ -128,7 +128,7 @@ if static_path.exists():
             return FileResponse(str(favicon_path), media_type="image/svg+xml")
 
 
-_index_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+_index_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa_fallback(request: Request, full_path: str):

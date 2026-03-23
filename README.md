@@ -142,7 +142,7 @@ kpd-codesearch/
 ├── config.py             # Конфиг
 ├── main.py               # Точка входа (uvicorn)
 ├── web/                  # FastAPI + статика UI
-├── ui/                   # Фронтенд (Vite/React)
+├── frontend/             # Фронтенд (Vite/React)
 └── rag/
     ├── chunker/          # Семантический чанкинг (Tree-sitter + fallback)
     ├── embeddings.py
