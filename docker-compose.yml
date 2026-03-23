@@ -1,5 +1,5 @@
 # Astra M — базовый compose (бот + облачный Qdrant из .env)
-name: astra-m
+version: '3.8'
 services:
   astra-m-bot:
     build: .
