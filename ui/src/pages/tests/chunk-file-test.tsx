@@ -6,7 +6,6 @@ import { RepoFileTree, type FileTreeFilter } from '@/components/repo/repo-file-t
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FileTreeNode, FileTreeResponse } from '@/types/repo';
@@ -150,8 +149,8 @@ export function ChunkFileTest() {
         void loadTree(repo);
     }, [repo, loadTree]);
 
-    const onRepoChangeHandler = (value: string) => {
-        setPrefs((p) => ({ ...p, repo: value }));
+    const onRepoChangeHandler = (value: string | null) => {
+        if (value) setPrefs((p) => ({ ...p, repo: value }));
     };
 
     const onFilterChangeHandler = (value: FileTreeFilter) => {

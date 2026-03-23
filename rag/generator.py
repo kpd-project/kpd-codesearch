@@ -1,12 +1,16 @@
+import os
 import json
 import logging
 import requests
 import httpx
 import config
-from .retriever import search_all_repos, search_in_repo, get_file_from_qdrant
-from .qdrant_client import collection_exists, list_collections
+from rag.retriever import search_all_repos, search_in_repo
+from rag.qdrant_client import list_collections
 
 logger = logging.getLogger(__name__)
+
+# SSL сертификат для корпоративного API (если задан в .env)
+_SSL_CERT = os.getenv("REQUESTS_CA_BUNDLE") or os.getenv("SSL_CERT_FILE")
 
 
 SYSTEM_PROMPT = config.AGENT_SYSTEM_PROMPT
@@ -205,6 +209,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
     for iteration in range(max_iterations):
         try:
             logger.debug("LLM request iteration %d, messages=%d", iteration + 1, len(messages))
+            # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
             response = requests.post(
                 f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
                 headers={
@@ -220,6 +225,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
                     "temperature": config.RAG_AGENT_TEMPERATURE,
                 },
                 timeout=config.RAG_AGENT_TIMEOUT,
+                verify=False,
             )
         except requests.exceptions.Timeout as e:
             logger.error("LLM timeout after %ds: %s", config.RAG_AGENT_TIMEOUT, e)
@@ -289,6 +295,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
                 "temperature": config.RAG_AGENT_TEMPERATURE,
             },
             timeout=config.RAG_AGENT_TIMEOUT,
+            verify=False,
         )
         data = response.json()
         _add_usage(data)
@@ -319,7 +326,7 @@ async def generate_response(
     )
     prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
         async with client.stream(
             "POST",
             f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
@@ -414,6 +421,7 @@ def generate_simple_answer(
                 "max_tokens": 4000,
             },
             timeout=config.RAG_AGENT_TIMEOUT,
+            verify=False,
         )
     except requests.exceptions.Timeout:
         answer = f"Таймаут при запросе к LLM ({config.RAG_AGENT_TIMEOUT}с)."

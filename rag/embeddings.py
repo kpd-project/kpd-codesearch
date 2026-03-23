@@ -25,10 +25,16 @@ def get_embeddings():
             model = "openai/text-embedding-3-small"
 
         # Создаём один синхронный клиент — не требует event loop
+        # max_retries=0 отключает автоматические ретраи OpenAI (борьба с бесконечным loop при таймаутах)
+        # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
         client = OpenAI(
             api_key=config.OPENROUTER_API_KEY,
             base_url=config.OPENROUTER_API_URL.rstrip("/"),
-            timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+            http_client=httpx.Client(
+                timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                verify=False,
+            ),
+            max_retries=0,
         )
 
         class OpenRouterEmbeddings:
@@ -74,10 +80,16 @@ def get_async_embeddings():
             @property
             def client(self):
                 if self._client is None:
+                    # max_retries=0 отключает автоматические ретраи OpenAI
+                    # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
                     self._client = AsyncOpenAI(
                         api_key=config.OPENROUTER_API_KEY,
                         base_url=config.OPENROUTER_API_URL.rstrip("/"),
-                        timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                        http_client=httpx.AsyncClient(
+                            timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                            verify=False,
+                        ),
+                        max_retries=0,
                     )
                 return self._client
 
