@@ -121,7 +121,7 @@ async def get_status():
 
 @router.get("/api/repos")
 async def list_repos():
-    """Список репозиториев, доступных для RAG (только enabled). Полный каталог — в GET /api/status."""
+    """Список репозиториев, доступных для RAG (только enabled): в т.ч. short_description и full_description (дублирует description). Полный каталог — GET /api/status."""
     return {"repos": state.list_enabled_repos()}
 
 

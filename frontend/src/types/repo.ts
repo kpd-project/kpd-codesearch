@@ -12,6 +12,8 @@ export interface Repo {
   last_indexed: string | null;
   status: string;
   description?: string | null;
+  /** То же, что description — полное описание (явно в GET /api/repos). */
+  full_description?: string | null;
   short_description?: string | null;
   embedder_model?: string | null;
   embedder_dimension?: number | null;

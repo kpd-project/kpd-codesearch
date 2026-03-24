@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useStatus } from '@/hooks/use-api';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { apiUrl } from '@/lib/api-url';
@@ -40,6 +40,14 @@ const VECTOR_SEARCH_TEST_STORAGE_KEY = 'kpd-codesearch-vector-search-test-v1';
 
 /** Стабильная ссылка на пустой список, пока нет status (не триггерим лишние эффекты). */
 const EMPTY_REPO_LIST: { name: string }[] = [];
+
+function repoFullText(r: {
+    description?: string | null;
+    full_description?: string | null;
+}): string | undefined {
+    const t = r.full_description ?? r.description;
+    return t && String(t).trim() ? String(t).trim() : undefined;
+}
 
 interface VectorSearchStored {
     query: string;
@@ -151,6 +159,8 @@ function ChunkCard({ chunk }: { chunk: ChunkResult }) {
 export function VectorSearchTest() {
     const { status } = useStatus();
     const repos = status?.repos ?? EMPTY_REPO_LIST;
+    /** Только включённые — как в RAG / GET /api/repos. */
+    const searchRepos = useMemo(() => repos.filter((r) => r.enabled), [repos]);
 
     const [prefs, setPrefs] = useLocalStorage<VectorSearchStored>({
         key: VECTOR_SEARCH_TEST_STORAGE_KEY,
@@ -161,12 +171,12 @@ export function VectorSearchTest() {
 
     const { query, repo, top_k: topK, min_score: minScore, use_min_score: useMinScore } = prefs;
 
-    /** Если сохранённый репозиторий пропал из списка — сбрасываем на «все». */
+    /** Если сохранённый репозиторий пропал из списка доступных для поиска — сбрасываем на «все». */
     useEffect(() => {
         if (repo === '__all__') return;
-        const exists = repos.some((r) => r.name === repo);
-        if (repos.length > 0 && !exists) setPrefs((p) => ({ ...p, repo: '__all__' }));
-    }, [repos, repo, setPrefs]);
+        const exists = searchRepos.some((r) => r.name === repo);
+        if (searchRepos.length > 0 && !exists) setPrefs((p) => ({ ...p, repo: '__all__' }));
+    }, [searchRepos, repo, setPrefs]);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -242,16 +252,38 @@ export function VectorSearchTest() {
                     <div className="flex items-center gap-2">
                         <Label className="text-sm text-muted-foreground whitespace-nowrap">Репозиторий</Label>
                         <Select value={repo} onValueChange={(v) => v != null && setPrefs((p) => ({ ...p, repo: v }))}>
-                            <SelectTrigger className="w-48 h-8 text-sm">
+                            <SelectTrigger className="w-[min(28rem,100%)] min-h-8 h-auto py-1.5 text-sm text-left">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__all__">Все репозитории</SelectItem>
-                                {repos.map((r) => (
-                                    <SelectItem key={r.name} value={r.name}>
-                                        {r.name}
-                                    </SelectItem>
-                                ))}
+                            <SelectContent className="max-w-[min(28rem,calc(100vw-2rem))]">
+                                <SelectItem value="__all__">Все репозитории (только включённые в индексе)</SelectItem>
+                                {searchRepos.map((r) => {
+                                    const short = r.short_description?.trim();
+                                    const full = repoFullText(r);
+                                    const showFull = Boolean(full && full !== short);
+                                    return (
+                                        <SelectItem
+                                            key={r.name}
+                                            value={r.name}
+                                            title={full ?? short ?? r.name}
+                                            textValue={`${r.name} ${short ?? ''} ${full ?? ''}`}
+                                        >
+                                            <span className="flex flex-col gap-0.5 items-start min-w-0">
+                                                <span className="font-mono text-sm">{r.name}</span>
+                                                {short ? (
+                                                    <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
+                                                        {short}
+                                                    </span>
+                                                ) : null}
+                                                {showFull ? (
+                                                    <span className="text-xs text-muted-foreground/80 line-clamp-4 whitespace-normal">
+                                                        {full}
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                        </SelectItem>
+                                    );
+                                })}
                             </SelectContent>
                         </Select>
                     </div>

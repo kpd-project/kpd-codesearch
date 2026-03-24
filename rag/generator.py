@@ -6,6 +6,7 @@ import httpx
 import config
 from rag.retriever import search_all_repos, search_in_repo
 from rag.qdrant_client import list_collections
+from rag.repos_metadata import format_repo_catalog_for_llm, get_repo_full_specification_text
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,9 @@ TOOLS = [
                     "repo": {
                         "type": "string",
                         "description": (
-                            "Идентификатор репозитория из списка проиндексированных "
-                            "(см. list_indexed_repos). Если не указан — поиск по всем."
+                            "Идентификатор коллекции из каталога (list_indexed_repos). "
+                            "Если не указан — поиск по всем включённым. "
+                            "Назначение репо смотри через get_repo_full_specification."
                         ),
                     },
                     "top_k": {
@@ -62,11 +64,36 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_indexed_repos",
-            "description": "Показывает список проиндексированных репозиториев. Используй перед поиском если не знаешь что проиндексировано.",
+            "description": (
+                "Краткий список репозиториев, доступных для поиска (только включённые): идентификатор и краткое описание. "
+                "Вызывай перед поиском, если не знаешь состав индекса. "
+                "Для полной спецификации конкретного репо — get_repo_full_specification."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_repo_full_specification",
+            "description": (
+                "Возвращает полную спецификацию (описание назначения) конкретного репозитория. "
+                "Вызывай, когда краткого описания из list_indexed_repos недостаточно: "
+                "хочешь понять архитектуру, домены, ограничения репо перед поиском."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Идентификатор репозитория (из list_indexed_repos)",
+                    },
+                },
+                "required": ["repo"],
             },
         },
     },
@@ -103,10 +130,20 @@ def _execute_tool(name: str, args: dict, on_status=None) -> str:
     if name == "list_indexed_repos":
         if on_status:
             on_status("📋 Проверяю список проиндексированных репозиториев…")
-        indexed = list_collections()
-        if not indexed:
-            return "Нет проиндексированных репозиториев. Используй /add <repo> для индексации."
-        return f"Проиндексированы: {', '.join(indexed)}"
+        catalog = format_repo_catalog_for_llm()
+        if catalog:
+            return catalog
+        if not list_collections():
+            return "Нет проиндексированных репозиториев. Добавь репозиторий и выполни индексацию."
+        return "Нет включённых репозиториев для поиска (все выключены в настройках)."
+
+    if name == "get_repo_full_specification":
+        repo = args.get("repo", "").strip()
+        if not repo:
+            return "Ошибка: укажи идентификатор репозитория (аргумент repo)."
+        if on_status:
+            on_status(f"📖 Полная спецификация репозитория «{repo}»…")
+        return get_repo_full_specification_text(repo)
 
     if name == "semantic_search":
         query = args.get("query", "")
@@ -182,8 +219,13 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
 
     Возвращает (answer, session_data) где session_data содержит tool_calls и meta.
     """
+    system_text = SYSTEM_PROMPT
+    catalog = format_repo_catalog_for_llm()
+    if catalog:
+        system_text = f"{SYSTEM_PROMPT}\n\n---\n\n{catalog}"
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_text},
     ]
 
     # Добавляем историю переписки
@@ -308,6 +350,7 @@ def generate_answer(question: str, history: list[dict] = None, repo_name: str = 
 
 RAG_CONTEXT_SYSTEM = (
     "Ты помощник по коду. Отвечай кратко, опираясь только на предоставленный контекст. "
+    "Если выше дан каталог репозиториев — используй краткие описания для понимания источников. "
     "Ответ в Markdown."
 )
 
@@ -365,11 +408,13 @@ async def generate_response(
     с данными о потреблении токенов (если провайдер их вернул).
     """
     model = model or config.OPENAI_MODEL
+    catalog = format_repo_catalog_for_llm()
+    catalog_block = f"{catalog}\n\n---\n\n" if catalog else ""
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
         for c in context_chunks
     )
-    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
+    prompt = f"{catalog_block}Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {query}"
 
     usage: dict = {}
     async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
@@ -453,11 +498,13 @@ def generate_simple_answer(
         on_status("✍️ Формирую ответ…")
 
     mdl = model or config.OPENAI_MODEL
+    catalog = format_repo_catalog_for_llm()
+    catalog_block = f"{catalog}\n\n---\n\n" if catalog else ""
     context = "\n\n---\n\n".join(
         f"[{c.get('repo', '')}:{c.get('path', '')}]\n{c.get('content', '')}"
         for c in chunks
     )
-    prompt = f"Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {question}"
+    prompt = f"{catalog_block}Контекст из кода:\n\n{context}\n\n---\n\nВопрос: {question}"
 
     try:
         response = requests.post(

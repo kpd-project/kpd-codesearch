@@ -169,7 +169,17 @@ class State:
 
     def list_enabled_repos(self) -> list[dict]:
         """Только репозитории с enabled=True — для API списка «доступных» (RAG)."""
-        return [r for r in self.list_repos() if r.get("enabled", True)]
+        result: list[dict] = []
+        for r in self.list_repos():
+            if not r.get("enabled", True):
+                continue
+            short = r.get("short_description")
+            full = r.get("description")
+            entry = dict(r)
+            entry["short_description"] = short
+            entry["full_description"] = full
+            result.append(entry)
+        return result
 
     def get_repo(self, name: str) -> dict | None:
         """Один репо из Qdrant или None если не существует."""

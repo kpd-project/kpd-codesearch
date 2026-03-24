@@ -27,6 +27,8 @@ interface Repo {
   last_indexed: string | null;
   status: string;
   description?: string | null;
+  short_description?: string | null;
+  full_description?: string | null;
 }
 
 interface Settings {

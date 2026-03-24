@@ -70,7 +70,7 @@ export function RepoCardModal({
             setDisplayName(repo.display_name ?? '');
             setRelativePath(repo.relative_path ?? '');
             setShortDescription(repo.short_description ?? '');
-            setDescription(repo.description ?? '');
+            setDescription((repo.full_description ?? repo.description) ?? '');
             setDirty({
                 displayName: false,
                 relativePath: false,
@@ -85,7 +85,7 @@ export function RepoCardModal({
         if (!dirty.displayName) setDisplayName(repo.display_name ?? '');
         if (!dirty.relativePath) setRelativePath(repo.relative_path ?? '');
         if (!dirty.shortDescription) setShortDescription(repo.short_description ?? '');
-        if (!dirty.description) setDescription(repo.description ?? '');
+        if (!dirty.description) setDescription((repo.full_description ?? repo.description) ?? '');
     }, [open, repo, hydratedRepoName, dirty]);
 
     const canSave = useMemo(() => {
