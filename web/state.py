@@ -167,6 +167,10 @@ class State:
             logger.error(f"Failed to list repos: {e}")
             return []
 
+    def list_enabled_repos(self) -> list[dict]:
+        """Только репозитории с enabled=True — для API списка «доступных» (RAG)."""
+        return [r for r in self.list_repos() if r.get("enabled", True)]
+
     def get_repo(self, name: str) -> dict | None:
         """Один репо из Qdrant или None если не существует."""
         in_qdrant = collection_exists(name)
