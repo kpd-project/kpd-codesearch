@@ -113,14 +113,14 @@ export function RepoCard({
               </span>
             </div>
 
-            {repo.description ? (
+            {repo.short_description?.trim() ? (
               <p
                 className={cn(
                   "text-sm leading-relaxed",
                   inactive ? "text-muted-foreground/80" : "text-muted-foreground"
                 )}
               >
-                {repo.description}
+                {repo.short_description.trim()}
               </p>
             ) : (
               <p

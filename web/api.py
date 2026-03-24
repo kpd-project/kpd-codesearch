@@ -42,6 +42,7 @@ from rag.qdrant_client import (
 )
 from rag.retriever import semantic_search, search_in_repo_detailed, search_all_repos_detailed
 from rag.generator import generate_answer, generate_response, simple_session_metadata
+from rag.describer import run_describer_agent, apply_describer_metadata
 from rag.validation import validate_user_question
 import queue
 
@@ -121,8 +122,8 @@ async def get_status():
 
 @router.get("/api/repos")
 async def list_repos():
-    """List all repositories."""
-    return {"repos": state.list_repos()}
+    """Список репозиториев, доступных для RAG (только enabled): в т.ч. short_description и full_description (дублирует description). Полный каталог — GET /api/status."""
+    return {"repos": state.list_enabled_repos()}
 
 
 @router.get("/api/repos/candidates")
@@ -304,86 +305,41 @@ async def reindex_repo(name: str, background_tasks: BackgroundTasks):
 
 @router.post("/api/repos/{name}/describe")
 async def describe_repo(name: str):
-    """Generate AI description for repository based on README/AGENTS or code chunks."""
+    """Агент Describer: semantic_search + read_file → suggested_name, short/full в метаданные коллекции."""
     repo = state.get_repo(name)
     if repo is None:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Собираем контекст: сначала README/AGENTS.md из папки репо
-    context_parts: list[str] = []
-    if repo["path"]:
-        for candidate in ("README.md", "AGENTS.md", "readme.md", "README.MD"):
-            candidate_path = Path(repo["path"]) / candidate
-            try:
-                text = candidate_path.read_text(encoding="utf-8", errors="ignore")
-                context_parts.append(f"=== {candidate} ===\n{text[:4000]}")
-            except (OSError, FileNotFoundError):
-                pass
-
-    # Если файлов нет — берём чанки из Qdrant
-    if not context_parts:
-        try:
-            chunks = await semantic_search(
-                query="project overview purpose architecture",
-                repo_filter=name,
-                top_k=10,
-            )
-            for c in chunks:
-                context_parts.append(f"[{c.get('path', '')}]\n{c.get('content', '')}")
-        except Exception as e:
-            logger.warning(f"Failed to fetch chunks for describe: {e}")
-
-    if not context_parts:
-        raise HTTPException(status_code=422, detail="No content available for description generation")
-
-    context = "\n\n".join(context_parts)
-    prompt = (
-        f"На основе приведённых материалов из репозитория «{name}» "
-        "напиши короткое описание проекта (1–2 предложения). "
-        "Только суть: что это за проект, какую задачу решает. "
-        "Без лишних слов и приветствий.\n\n"
-        f"{context[:6000]}"
-    )
-
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{config.OPENROUTER_API_URL.rstrip('/')}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": config.OPENROUTER_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 200,
-                    "temperature": 0.3,
-                },
-            )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"LLM error {resp.status_code}: {resp.text}")
+        result, session_meta = await asyncio.to_thread(run_describer_agent, name)
+    except Exception as e:
+        logger.error("Describer failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Describer error: {e}") from e
 
-        description = resp.json()["choices"][0]["message"].get("content", "").strip()
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="LLM request timed out")
+    if not apply_describer_metadata(name, result):
+        raise HTTPException(
+            status_code=422,
+            detail="Не удалось сгенерировать описание: недостаточно данных из индекса или ответа модели.",
+        )
 
-    short_description = description.split(".")[0].strip()
-    if len(short_description) > 140:
-        short_description = short_description[:137].rstrip() + "..."
-    if not short_description:
-        short_description = description[:140].rstrip()
-
-    state.set_repo_description(name, description)
-    state.set_repo_short_description(name, short_description)
-
+    full_text = result.full_description.strip()
     await ws_manager.broadcast({
         "type": "repo_described",
         "repo": name,
-        "description": description,
-        "short_description": short_description,
+        "suggested_name": result.suggested_name,
+        "short_description": result.short_description,
+        "full_description": full_text,
+        "description": full_text,
     })
 
-    return {"description": description, "short_description": short_description}
+    return {
+        "suggested_name": result.suggested_name,
+        "short_description": result.short_description,
+        "full_description": full_text,
+        "description": full_text,
+        "usage": session_meta.get("usage"),
+        "tool_calls_count": len(session_meta.get("tool_calls") or []),
+    }
 
 
 @router.get("/api/config/system")
@@ -402,15 +358,10 @@ async def get_system_config():
         "repos": {
             "base_path": str(config.REPOS_BASE_PATH),
         },
-        "telegram": {
-            "bot_token_masked": "•" * 8 if config.TELEGRAM_BOT_TOKEN else "",
-            "has_bot_token": bool(config.TELEGRAM_BOT_TOKEN),
-            "whitelist_users": list(config.TELEGRAM_WHITELIST_USERS),
-        },
-        "openrouter": {
-            "url": config.OPENROUTER_API_URL,
-            "api_key_masked": "•" * 8 if config.OPENROUTER_API_KEY else "",
-            "has_api_key": bool(config.OPENROUTER_API_KEY),
+        "llm": {
+            "base_url": config.OPENAI_BASE_URL,
+            "api_key_masked": "•" * 8 if config.OPENAI_API_KEY else "",
+            "has_api_key": bool(config.OPENAI_API_KEY),
         },
     }
 
@@ -466,7 +417,7 @@ def _sse_chunk_answer(text: str, chunk_size: int = 72) -> list[str]:
 
 @router.post("/api/query")
 async def query(request: QueryRequest):
-    """RAG: простой (поиск + один ответ) или агентный цикл как в Telegram — SSE."""
+    """RAG: простой (поиск + один ответ) или агентный цикл — ответ через SSE."""
     qerr = validate_user_question(request.message)
     if qerr:
         raise HTTPException(status_code=400, detail=qerr)
@@ -520,19 +471,29 @@ async def query(request: QueryRequest):
                 steps.append("✍️ Формирую ответ…")
 
                 parts: list[str] = []
+                usage: dict = {}
                 async for piece in generate_response(
                     request.message,
                     chunks,
                     model=state.settings.model,
                     temperature=state.settings.temperature,
                 ):
-                    parts.append(piece)
-                    yield f"data: {json.dumps({'content': piece}, ensure_ascii=False)}\n\n"
+                    if isinstance(piece, dict):
+                        usage = piece.get("__usage__") or {}
+                    else:
+                        parts.append(piece)
+                        yield f"data: {json.dumps({'content': piece}, ensure_ascii=False)}\n\n"
 
                 body = "".join(parts)
                 total_s = round(time.monotonic() - t0, 2)
-                steps.append(f"✅ Готово. {total_s} с.")
-                session_data = simple_session_metadata()
+                pt = usage.get("prompt_tokens") or 0
+                ct = usage.get("completion_tokens") or 0
+                tt = usage.get("total_tokens") or (pt + ct)
+                done_line = f"✅ Готово. {total_s} с."
+                if pt > 0 or ct > 0:
+                    done_line += f" Вход: {pt:,} ток., выход: {ct:,} ток., всего: {tt:,}"
+                steps.append(done_line)
+                session_data = simple_session_metadata(usage if usage else None)
                 session_data["model_primary"] = state.settings.model
                 log_entry = {
                     "ts": datetime.now(timezone.utc).isoformat(),
@@ -548,7 +509,7 @@ async def query(request: QueryRequest):
                     "rag_mode": state.settings.rag_mode,
                 }
                 log_entry.update(session_data)
-                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': {}, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'meta', 'duration_s': total_s, 'usage': usage, 'tool_calls_count': 0, 'session_log': log_entry}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
                 logger.error(f"Simple query failed: {e}")

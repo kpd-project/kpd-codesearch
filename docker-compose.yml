@@ -1,4 +1,4 @@
-# Astra M — базовый compose (бот + облачный Qdrant из .env)
+# ASTRA-M — базовый compose (приложение + облачный Qdrant из .env)
 version: '3.8'
 services:
   astra-m-bot:
@@ -10,5 +10,5 @@ services:
     environment:
       REPOS_BASE_PATH: /repos
     volumes:
-      # Монтируем репозитории KPD (путь с хоста → в контейнере)
-      - ${REPOS_BASE_PATH:-d:/kpd-project}:/repos:ro
+      # Монтируем каталог с репозиториями (путь с хоста → в контейнере)
+      - ${REPOS_BASE_PATH:-d:/projects}:/repos:ro

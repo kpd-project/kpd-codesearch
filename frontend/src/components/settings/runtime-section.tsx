@@ -92,7 +92,7 @@ export function RuntimeSection() {
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <Label htmlFor="rag-mode">Режим RAG (веб и Telegram)</Label>
+          <Label htmlFor="rag-mode">Режим RAG (runtime)</Label>
           <Select
             value={settings.rag_mode}
             onValueChange={(value) => {

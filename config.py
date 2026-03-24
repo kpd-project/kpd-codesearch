@@ -1,73 +1,21 @@
 import os
-import json
-import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-logger = logging.getLogger(__name__)
-
 load_dotenv()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-
-# Whitelist users - поддержка JSON файла + .env fallback
-_WHITELIST_FILE = Path(__file__).parent / "whitelist.json"
-
-def _load_whitelist() -> set:
-    """Загружает whitelist из JSON файла, fallback - .env."""
-    if _WHITELIST_FILE.exists():
-        try:
-            data = json.loads(_WHITELIST_FILE.read_text(encoding="utf-8"))
-            users = set(str(u) for u in data.get("users", []))
-            if users:
-                logger.info(f"Loaded {len(users)} users from whitelist.json")
-                return users
-        except Exception as e:
-            logger.warning(f"Failed to load whitelist.json: {e}")
-    
-    # Fallback to .env
-    return set(u.strip() for u in os.getenv("TELEGRAM_WHITELIST_USERS", "").split(",") if u.strip())
-
-def _save_whitelist(users: set) -> None:
-    """Сохраняет whitelist в JSON файл."""
-    try:
-        data = {"users": sorted(list(users))}
-        _WHITELIST_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        logger.info(f"Saved {len(users)} users to whitelist.json")
-    except Exception as e:
-        logger.error(f"Failed to save whitelist.json: {e}")
-        raise
-
-TELEGRAM_WHITELIST_USERS = _load_whitelist()
-
-# Helpers for runtime whitelist management
-def add_whitelist_user(user_id: str) -> bool:
-    """Добавляет пользователя в whitelist. Returns True if added."""
-    if user_id in TELEGRAM_WHITELIST_USERS:
-        return False
-    TELEGRAM_WHITELIST_USERS.add(user_id)
-    _save_whitelist(TELEGRAM_WHITELIST_USERS)
-    return True
-
-def remove_whitelist_user(user_id: str) -> bool:
-    """Удаляет пользователя из whitelist. Returns True if removed."""
-    if user_id not in TELEGRAM_WHITELIST_USERS:
-        return False
-    TELEGRAM_WHITELIST_USERS.discard(user_id)
-    _save_whitelist(TELEGRAM_WHITELIST_USERS)
-    return True
-
-OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-preview")
+# OpenAI-compatible HTTP API (OpenRouter, vLLM, Azure OpenAI, корп. прокси и т.д.)
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip() or "https://openrouter.ai/api/v1"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "").strip() or "google/gemini-2.5-flash-preview"
 
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "openai/text-embedding-3-small")
 EMBEDDINGS_DIMENSION = int(os.getenv("EMBEDDINGS_DIMENSION", "1536"))
 
-QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.gotskin.ru")
+QDRANT_URL = os.getenv("QDRANT_URL", "https://qdrant.yoursite.ru")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/kpd-project"))
+REPOS_BASE_PATH = Path(os.getenv("REPOS_BASE_PATH", "d:/projects"))
 REPOS_WHITELIST = [
     r.strip() for r in os.getenv("REPOS_WHITELIST", "").split(",") if r.strip()
 ]
@@ -76,7 +24,7 @@ CHUNK_SIZE = 1500
 
 # Поведенческая часть системного промпта агента (персона + правила)
 # Техническая часть (BOT_CONTEXT) добавляется в generator.py автоматически
-_PROMPT_FILE = Path(__file__).parent / "system_prompt.txt"
+_PROMPT_FILE = Path(__file__).parent / "prompts" / "system_prompt.txt"
 AGENT_SYSTEM_PROMPT = _PROMPT_FILE.read_text(encoding="utf-8").strip()
 CHUNK_OVERLAP = 200
 
@@ -98,10 +46,7 @@ EMBED_REQUEST_TIMEOUT = int(os.getenv("EMBED_REQUEST_TIMEOUT", "60"))
 # Размер батча для upsert (избежание 413 nginx)
 QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "200"))
 
-# Количество последних сессий в logs/ (ротация)
-LOG_ROTATION = int(os.getenv("LOG_ROTATION", "10"))
-
-# Режим RAG по умолчанию (переключается через /api/config/runtime и сразу действует для веба и бота)
+# Режим RAG по умолчанию (переключается через /api/config/runtime и сразу действует для веба)
 _r = os.getenv("RAG_RUNTIME_MODE", "agent").strip().lower()
 RAG_RUNTIME_MODE: str = _r if _r in ("simple", "agent") else "agent"
 
@@ -115,37 +60,55 @@ RAG_SEARCH_TOP_K = int(os.getenv("RAG_SEARCH_TOP_K", "10"))
 # Верхняя граница top_k (LLM не может запросить больше)
 RAG_SEARCH_TOP_K_MAX = int(os.getenv("RAG_SEARCH_TOP_K_MAX", "15"))
 # Порог score для включения результата (ниже — отбрасываем, 0 = брать все)
-RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.5"))
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.55"))
 # Макс. результатов при поиске по всем репо (объединённый топ)
 RAG_SEARCH_ALL_LIMIT = int(os.getenv("RAG_SEARCH_ALL_LIMIT", "15"))
 # max_tokens в цикле агента (с tool_calls)
 RAG_AGENT_MAX_TOKENS = int(os.getenv("RAG_AGENT_MAX_TOKENS", "10000"))
 # max_tokens для финального ответа без инструментов
-RAG_AGENT_FINAL_MAX_TOKENS = int(os.getenv("RAG_AGENT_FINAL_MAX_TOKENS", "3000"))
+RAG_AGENT_FINAL_MAX_TOKENS = int(os.getenv("RAG_AGENT_FINAL_MAX_TOKENS", "3500"))
 # temperature для LLM (0–1, меньше = детерминированнее)
 RAG_AGENT_TEMPERATURE = float(os.getenv("RAG_AGENT_TEMPERATURE", "0.1"))
-# Таймаут HTTP-запросов к OpenRouter (сек)
+# Таймаут HTTP-запросов к LLM (OpenAI-compatible) (сек)
 RAG_AGENT_TIMEOUT = int(os.getenv("RAG_AGENT_TIMEOUT", "60"))
 # Длина превью результата tool_call в session log
 RAG_LOG_RESULT_PREVIEW_LEN = int(os.getenv("RAG_LOG_RESULT_PREVIEW_LEN", "300"))
+
+# --- Simple mode: Query Rewriting ---
+# Быстрая/дешёвая модель для переписывания вопроса пользователя в ключевые слова
+# перед векторным поиском (шаг Query Rewriting в generate_simple_answer).
+SIMPLE_REWRITE_MODEL = os.getenv("SIMPLE_REWRITE_MODEL", "google/gemini-2.5-flash")
 
 # --- Two-Agent Pipeline ---
 # Feature flag: использовать двухагентный пайплайн
 USE_TWO_AGENT_PIPELINE = os.getenv("USE_TWO_AGENT_PIPELINE", "true").lower() in ("true", "1", "yes")
 
-# Модель для Analyst (аналитик, планировщик поиска)
-ANALYST_MODEL = os.getenv("ANALYST_MODEL", "openrouter/z-ai/glm-4-flash")
+# Модель для Analyst (аналитик, планировщик поиска) — дешёвая и быстрая
+ANALYST_MODEL = os.getenv("ANALYST_MODEL", "google/gemini-2.5-flash")
 ANALYST_TEMPERATURE = float(os.getenv("ANALYST_TEMPERATURE", "0.3"))
 ANALYST_MAX_TOKENS = int(os.getenv("ANALYST_MAX_TOKENS", "2000"))
 ANALYST_TIMEOUT = int(os.getenv("ANALYST_TIMEOUT", "60"))
 ANALYST_HISTORY_LIMIT = int(os.getenv("ANALYST_HISTORY_LIMIT", "20"))
 
-# Модель для Answerer (эксперт, синтез ответа)
-ANSWERER_MODEL = os.getenv("ANSWERER_MODEL", "openrouter/z-ai/glm-4-plus")
+# Модель для Answerer (эксперт, синтез ответа) — "думающая" модель
+# Для думающих моделей (o3-mini, claude-3.7-sonnet) используется max_completion_tokens
+# вместо max_tokens, чтобы ограничить длину "раздумий".
+ANSWERER_MODEL = os.getenv("ANSWERER_MODEL", "openai/o3-mini")
 ANSWERER_TEMPERATURE = float(os.getenv("ANSWERER_TEMPERATURE", "0.1"))
-ANSWERER_MAX_TOKENS = int(os.getenv("ANSWERER_MAX_TOKENS", "3000"))
-ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "90"))
+ANSWERER_MAX_TOKENS = int(os.getenv("ANSWERER_MAX_TOKENS", "4000"))
+# Ограничение "раздумий" для моделей с chain-of-thought (0 = не передавать параметр)
+ANSWERER_MAX_REASONING_TOKENS = int(os.getenv("ANSWERER_MAX_REASONING_TOKENS", "2000"))
+ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "120"))
 ANSWERER_HISTORY_LIMIT = int(os.getenv("ANSWERER_HISTORY_LIMIT", "20"))
 
-# Макс. итераций в двухагентном пайплайне
-PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "2"))
+# Макс. итераций в двухагентном пайплайне (полный цикл Analyst → поиск → Answerer)
+PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "3"))
+
+# --- Describer (автоописание репозитория: инструменты + JSON в метаданные) ---
+_d_model = os.getenv("DESCRIBER_MODEL", "").strip()
+DESCRIBER_MODEL = _d_model or ANALYST_MODEL
+DESCRIBER_MAX_ITERATIONS = int(os.getenv("DESCRIBER_MAX_ITERATIONS", "12"))
+DESCRIBER_MAX_TOKENS = int(os.getenv("DESCRIBER_MAX_TOKENS", str(RAG_AGENT_MAX_TOKENS)))
+DESCRIBER_FINAL_MAX_TOKENS = int(os.getenv("DESCRIBER_FINAL_MAX_TOKENS", "2500"))
+DESCRIBER_TEMPERATURE = float(os.getenv("DESCRIBER_TEMPERATURE", "0.2"))
+DESCRIBER_TIMEOUT = int(os.getenv("DESCRIBER_TIMEOUT", str(RAG_AGENT_TIMEOUT)))

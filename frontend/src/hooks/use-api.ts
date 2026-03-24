@@ -27,6 +27,8 @@ interface Repo {
   last_indexed: string | null;
   status: string;
   description?: string | null;
+  short_description?: string | null;
+  full_description?: string | null;
 }
 
 interface Settings {
@@ -34,7 +36,7 @@ interface Settings {
   temperature: number;
   top_k: number;
   max_chunks: number;
-  /** Режим RAG для веба и Telegram (runtime). */
+  /** Режим RAG (runtime). */
   rag_mode?: "simple" | "agent";
 }
 

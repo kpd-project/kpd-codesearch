@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 from rag.chunker import chunk_file
 
-# Небольшой файл — показываем целиком все чанки
-REPO = "kpd-pdf-2"
-FILE = "src/queue/worker.ts"
+# Подставь существующее имя репо из REPOS_WHITELIST и путь к файлу
+REPO = "backend"
+FILE = "README.md"
 
 
 def main():

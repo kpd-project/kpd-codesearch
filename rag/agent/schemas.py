@@ -4,7 +4,7 @@ from typing import Optional
 
 class SearchQuery(BaseModel):
     text: str = Field(description="Поисковый запрос для поиска в коде")
-    repo: Optional[str] = Field(default=None, description="Репозиторий для поиска (kpd-backend, kpd-frontend и т.д.)")
+    repo: Optional[str] = Field(default=None, description="Репозиторий для поиска (имя коллекции в индексе) или null — по всем")
     top_k: Optional[int] = Field(default=None, description="Количество результатов")
     min_score: Optional[float] = Field(default=None, description="Минимальный порог релевантности (0-1)")
 
@@ -46,3 +46,11 @@ class PipelineState(BaseModel):
     summarized_context: Optional[SummarizedContext] = Field(default=None)
     answerer_response: Optional[AnswererResponse] = Field(default=None)
     total_tokens: dict = Field(default_factory=lambda: {"analyst": 0, "answerer": 0, "total": 0})
+
+
+class DescriberResponse(BaseModel):
+    """Итог агента Describer для метаданных коллекции Qdrant."""
+
+    suggested_name: str = Field(description="Предлагаемое краткое название репозитория")
+    short_description: str = Field(description="2–3 предложения: суть и миссия")
+    full_description: str = Field(description="Полное описание для поиска и карточки")

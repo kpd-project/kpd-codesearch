@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, Server, Database, GitBranch, Users, Key } from "lucide-react";
+import { Info, Server, Database, GitBranch, Key } from "lucide-react";
 
 interface SystemConfig {
   qdrant: { url: string; api_key_masked: string; has_api_key: boolean };
   embeddings: { model: string; dimension: number };
   repos: { base_path: string };
-  telegram: { has_bot_token: boolean; whitelist_users: string[] };
-  openrouter: { url: string; api_key_masked: string; has_api_key: boolean };
+  llm: { base_url: string; api_key_masked: string; has_api_key: boolean };
 }
 
 export function SystemInfoSection() {
@@ -74,36 +72,13 @@ export function SystemInfoSection() {
 
         <div className="space-y-2">
           <div className="flex items-center gap-2 font-medium">
-            <Users className="w-4 h-4" />
-            Telegram
-          </div>
-          <InfoRow
-            label="Bot Token"
-            value={config?.telegram.has_bot_token ? "••••••••" : "не задан"}
-          />
-          {config?.telegram.whitelist_users && config.telegram.whitelist_users.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-sm text-muted-foreground">Пользователи:</div>
-              <div className="flex flex-wrap gap-1">
-                {config.telegram.whitelist_users.map((user) => (
-                  <Badge key={user} variant="outline">
-                    {user}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 font-medium">
             <Key className="w-4 h-4" />
-            OpenRouter
+            LLM (OpenAI-compatible)
           </div>
-          <InfoRow label="URL" value={config?.openrouter.url} />
+          <InfoRow label="Base URL" value={config?.llm.base_url} />
           <InfoRow
             label="API Key"
-            value={config?.openrouter.has_api_key ? "••••••••" : "не задан"}
+            value={config?.llm.has_api_key ? "••••••••" : "не задан"}
           />
         </div>
 

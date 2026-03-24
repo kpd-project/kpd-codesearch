@@ -1,10 +1,10 @@
 ---
 description: React UI — обработчики событий вынесены из JSX, именование *Handler
-globs: ui/**/*.tsx
+globs: frontend/**/*.tsx
 alwaysApply: false
 ---
 
-# Обработчики событий в UI (`ui/`)
+# Обработчики событий в UI (`frontend/`)
 
 - Пропсы `onChange`, `onClick`, `onKeyDown`, `onValueChange`, `onCheckedChange` и аналоги **не заполняем инлайн-лямбдами** в разметке.
 - Логику выносим в **отдельные функции** в теле компонента (или в `useCallback`, если нужна стабильная ссылка).
