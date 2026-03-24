@@ -132,6 +132,7 @@ class State:
         return {
             "name": name,
             "display_name": props.get("display_name"),
+            "suggested_name": props.get("suggested_name"),
             "path": abs_path,
             "relative_path": relative_path,
             "indexed_path": indexed_path,
@@ -141,6 +142,7 @@ class State:
             "status": self._repo_status.get(name, "idle"),
             "description": props.get("description"),
             "short_description": props.get("short_description"),
+            "full_description": props.get("full_description") or props.get("description"),
             "embedder_model": _embedder_model_from_sources(props),
             "embedder_dimension": _embedder_dimension_from_sources(props),
             "collection_metadata": collection_metadata,
@@ -174,7 +176,7 @@ class State:
             if not r.get("enabled", True):
                 continue
             short = r.get("short_description")
-            full = r.get("description")
+            full = r.get("full_description") or r.get("description")
             entry = dict(r)
             entry["short_description"] = short
             entry["full_description"] = full

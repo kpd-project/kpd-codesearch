@@ -75,12 +75,15 @@ def get_repo_full_specification_text(repo: str) -> str:
         return f"Репозиторий `{repo}` существует, но выключен и недоступен для поиска."
     meta = get_metadata(repo)
     display = (meta.get("display_name") or "").strip()
-    full = (meta.get("description") or "").strip()
+    suggested = (meta.get("suggested_name") or "").strip()
+    full = (meta.get("full_description") or meta.get("description") or "").strip()
     short = (meta.get("short_description") or "").strip()
 
     lines: list[str] = [f"Репозиторий: `{repo}`"]
     if display:
         lines.append(f"Название: {display}")
+    if suggested:
+        lines.append(f"Предлагаемое название (Describer): {suggested}")
     if short:
         lines.append(f"Кратко: {short}")
     if full:

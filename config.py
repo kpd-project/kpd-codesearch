@@ -103,3 +103,12 @@ ANSWERER_HISTORY_LIMIT = int(os.getenv("ANSWERER_HISTORY_LIMIT", "20"))
 
 # Макс. итераций в двухагентном пайплайне (полный цикл Analyst → поиск → Answerer)
 PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "3"))
+
+# --- Describer (автоописание репозитория: инструменты + JSON в метаданные) ---
+_d_model = os.getenv("DESCRIBER_MODEL", "").strip()
+DESCRIBER_MODEL = _d_model or ANALYST_MODEL
+DESCRIBER_MAX_ITERATIONS = int(os.getenv("DESCRIBER_MAX_ITERATIONS", "12"))
+DESCRIBER_MAX_TOKENS = int(os.getenv("DESCRIBER_MAX_TOKENS", str(RAG_AGENT_MAX_TOKENS)))
+DESCRIBER_FINAL_MAX_TOKENS = int(os.getenv("DESCRIBER_FINAL_MAX_TOKENS", "2500"))
+DESCRIBER_TEMPERATURE = float(os.getenv("DESCRIBER_TEMPERATURE", "0.2"))
+DESCRIBER_TIMEOUT = int(os.getenv("DESCRIBER_TIMEOUT", str(RAG_AGENT_TIMEOUT)))

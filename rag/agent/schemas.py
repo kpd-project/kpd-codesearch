@@ -46,3 +46,11 @@ class PipelineState(BaseModel):
     summarized_context: Optional[SummarizedContext] = Field(default=None)
     answerer_response: Optional[AnswererResponse] = Field(default=None)
     total_tokens: dict = Field(default_factory=lambda: {"analyst": 0, "answerer": 0, "total": 0})
+
+
+class DescriberResponse(BaseModel):
+    """Итог агента Describer для метаданных коллекции Qdrant."""
+
+    suggested_name: str = Field(description="Предлагаемое краткое название репозитория")
+    short_description: str = Field(description="2–3 предложения: суть и миссия")
+    full_description: str = Field(description="Полное описание для поиска и карточки")
