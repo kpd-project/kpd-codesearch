@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Callable
 
@@ -9,7 +10,7 @@ from .schemas import PipelineState, SearchQuery
 logger = logging.getLogger(__name__)
 
 
-def generate_answer_two_agent(
+async def generate_answer_two_agent(
     question: str,
     history: list[dict] | None = None,
     on_status: Callable[[str], None] | None = None,
@@ -36,7 +37,7 @@ def generate_answer_two_agent(
             on_status(f"🤔 Анализирую запрос (итерация {iteration})...")
 
         try:
-            analyst_response, analyst_usage = analyst.analyze(
+            analyst_response, analyst_usage = await analyst.analyze(
                 question=question,
                 history=history,
                 hints=hints if iteration > 1 else None,
@@ -57,7 +58,10 @@ def generate_answer_two_agent(
             on_status(f"🔍 Ищу: {queries_preview}...")
 
         try:
-            search_results = analyst.search(analyst_response.queries, on_status=on_status)
+            # search() синхронный (Qdrant), запускаем в пуле потоков чтобы не блокировать event loop
+            search_results = await asyncio.to_thread(
+                analyst.search, analyst_response.queries, on_status
+            )
             state.search_results = search_results
 
             logger.debug("Search iteration %d: found %d results", iteration, len(search_results))
@@ -66,12 +70,25 @@ def generate_answer_two_agent(
             return f"Ошибка поиска: {e}", _make_session_data(state, total_usage)
 
         if on_status:
-            on_status(f"✍️ Формирую ответ ({len(search_results)} фрагментов кода)...")
+            on_status(f"📝 Анализирую найденное ({len(search_results)} результатов)...")
 
         try:
-            answerer_response, answerer_usage = answerer.answer(
+            summarized_context, summarize_usage = await analyst.summarize(search_results, question)
+            state.summarized_context = summarized_context
+            _add_usage(summarize_usage, "summarize")
+
+            logger.debug("Summarized: files=%d, confidence=%.2f", len(summarized_context.files_involved), summarized_context.confidence)
+        except Exception as e:
+            logger.error("Summarize error: %s", e)
+            return f"Ошибка анализа результатов: {e}", _make_session_data(state, total_usage)
+
+        if on_status:
+            on_status("✍️ Формирую ответ...")
+
+        try:
+            answerer_response, answerer_usage = await answerer.answer(
                 question=question,
-                search_results=search_results,
+                summarized_context=summarized_context,
                 history=history,
                 iteration=iteration,
             )
@@ -95,6 +112,8 @@ def generate_answer_two_agent(
                 on_status(f"🔄 Уточняю поиск (итерация {iteration + 1})...")
 
             hints = answerer_response.hints or []
+            if state.summarized_context:
+                hints.append(f"Текущая уверенность: {state.summarized_context.confidence:.0%}")
 
             new_queries = []
             for q in (answerer_response.queries or []):
@@ -132,6 +151,7 @@ def _make_session_data(state: PipelineState, usage: dict) -> dict:
         "search": {
             "results_count": len(state.search_results),
             "files": list(set(f"{r.repo}:{r.path}" for r in state.search_results)),
+            "summarized_confidence": state.summarized_context.confidence if state.summarized_context else None,
         } if state.search_results else None,
         "answerer": {
             "need_more": state.answerer_response.need_more if state.answerer_response else None,

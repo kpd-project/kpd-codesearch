@@ -1,47 +1,35 @@
-import json
 import logging
-import requests
 from pathlib import Path
 
 import config
-from .schemas import AnswererResponse, SearchResult
+from .llm_client import LLMClient, parse_json_response
+from .schemas import AnswererResponse, SummarizedContext
 
 logger = logging.getLogger(__name__)
 
 ANSWERER_PROMPT = (Path(__file__).parent.parent.parent / "prompts" / "answerer.txt").read_text(encoding="utf-8").strip()
 
-# Максимальное суммарное число символов для контекста, передаваемого Answerer.
-# ~4 символа ≈ 1 токен; 160k символов ≈ 40k токенов — достаточно для думающих моделей.
-_ANSWERER_CONTEXT_MAX_CHARS = 160_000
+def _build_context_text(summarized_context: SummarizedContext, question: str) -> str:
+    """Собирает контекст из саммари для передачи Answerer'у."""
+    parts: list[str] = [
+        f"Вопрос пользователя: {question}",
+        "",
+        "Сводка по найденному коду:",
+        summarized_context.summary,
+        "",
+        "Ключевые цитаты:"
+    ]
 
+    for i, citation in enumerate(summarized_context.citations, 1):
+        parts.append(f"[{i}] {citation}")
 
-def _build_context_text(search_results: list[SearchResult], question: str) -> str:
-    """Собирает контекст из сырых чанков кода для передачи Answerer'у.
+    parts.extend([
+        "",
+        "Затронутые файлы:",
+        ", ".join(summarized_context.files_involved)
+    ])
 
-    Чанки передаются в полном виде (не суммаризированные), с указанием
-    репозитория, файла, типа и score. Общий объём ограничен, чтобы не
-    переполнить контекстное окно модели.
-    """
-    parts: list[str] = []
-    total_chars = 0
-
-    for i, r in enumerate(search_results, 1):
-        content = r.content
-        if config.RAG_CHUNK_DISPLAY_CHARS > 0:
-            content = content[:config.RAG_CHUNK_DISPLAY_CHARS]
-        type_hint = f" [{r.type}]" if r.type else ""
-        chunk = (
-            f"[{i}] {r.repo}: {r.path}{type_hint} (score={r.score:.2f})\n"
-            f"```\n{content}\n```"
-        )
-        if total_chars + len(chunk) > _ANSWERER_CONTEXT_MAX_CHARS:
-            parts.append(f"[{i}+] ... остальные фрагменты обрезаны (превышен лимит контекста)")
-            break
-        parts.append(chunk)
-        total_chars += len(chunk)
-
-    header = f"Вопрос пользователя: {question}\n\nФрагменты кода из репозиториев:\n"
-    return header + "\n\n---\n\n".join(parts)
+    return "\n".join(parts)
 
 
 class AnswererAgent:
@@ -51,21 +39,21 @@ class AnswererAgent:
         self.max_tokens = config.ANSWERER_MAX_TOKENS
         self.max_reasoning_tokens = config.ANSWERER_MAX_REASONING_TOKENS
         self.timeout = config.ANSWERER_TIMEOUT
+        self._client = LLMClient()
 
-    def answer(
+    async def answer(
         self,
         question: str,
-        search_results: list[SearchResult],
+        summarized_context: SummarizedContext,
         history: list[dict] | None = None,
         iteration: int = 1,
     ) -> tuple[AnswererResponse, dict]:
         messages = [{"role": "system", "content": ANSWERER_PROMPT}]
 
         if history:
-            for msg in history[-config.ANSWERER_HISTORY_LIMIT:]:
-                messages.append(msg)
+            messages.extend(history[-config.ANSWERER_HISTORY_LIMIT:])
 
-        context_text = _build_context_text(search_results, question)
+        context_text = _build_context_text(summarized_context, question)
         messages.append({"role": "user", "content": context_text})
 
         if iteration > 1:
@@ -78,54 +66,33 @@ class AnswererAgent:
                 ),
             })
 
-        payload: dict = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-        }
         # Ограничиваем "раздумья" для think-моделей (o3-mini, claude-3.7-sonnet и др.)
         # через параметр max_completion_tokens (OpenAI-compatible API; COT + итоговый ответ).
+        extra_payload: dict | None = None
         if self.max_reasoning_tokens > 0:
-            payload["max_completion_tokens"] = self.max_tokens + self.max_reasoning_tokens
+            extra_payload = {"max_completion_tokens": self.max_tokens + self.max_reasoning_tokens}
 
-        response = requests.post(
-            f"{config.OPENAI_BASE_URL.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {config.OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
+        content, usage = await self._client.chat(
+            messages=messages,
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
             timeout=self.timeout,
+            json_mode=True,
+            extra_payload=extra_payload,
         )
 
-        if response.status_code != 200:
-            raise Exception(f"Answerer API error ({response.status_code}): {response.text}")
-
-        data = response.json()
-        content = data["choices"][0]["message"].get("content", "")
-        usage = data.get("usage", {})
-
-        def _try_parse(raw: str) -> AnswererResponse | None:
-            for candidate in [raw.strip(), raw]:
-                try:
-                    parsed = json.loads(candidate)
-                    return AnswererResponse(**parsed)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            # Извлечь JSON-объект из текста вида "json\n{...}" или markdown-блока
-            start = raw.find("{")
-            end = raw.rfind("}") + 1
-            if start >= 0 and end > start:
-                try:
-                    parsed = json.loads(raw[start:end])
-                    return AnswererResponse(**parsed)
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            return None
-
-        answerer_response = _try_parse(content)
-        if answerer_response is None:
+        parsed = parse_json_response(content)
+        if parsed is not None:
+            try:
+                answerer_response = AnswererResponse(**parsed)
+            except Exception as e:
+                logger.error("Failed to build AnswererResponse: %s\nParsed: %s", e, parsed)
+                answerer_response = AnswererResponse(
+                    answer="Не удалось сформировать ответ. Попробуйте переформулировать вопрос.",
+                    need_more=False,
+                )
+        else:
             logger.error("Failed to parse Answerer response\nContent: %s...", content[:200])
             if len(content) > 50 and "{" not in content:
                 answerer_response = AnswererResponse(answer=content, need_more=False)
