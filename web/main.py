@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    logger.info("Starting KPD CodeSearch Web UI...")
+    logger.info("Starting ASTRA-M CodeSearch Web UI...")
     
     # Проверяем подключение к Qdrant (repo-данные хранятся в Qdrant и читаются по запросу)
     state.check_qdrant()
@@ -34,8 +34,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="KPD CodeSearch",
-    description="Web interface for KPD CodeSearch",
+    title="ASTRA-M CodeSearch",
+    description="Web interface for ASTRA-M CodeSearch (АСТРА-М)",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -79,8 +79,8 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve main page."""
-    # Serve from ui/dist (built React app)
-    index_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+    # Serve from frontend/dist (built React app)
+    index_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
     
     if index_path.exists():
         return index_path.read_text(encoding="utf-8")
@@ -92,7 +92,7 @@ async def root():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>KPD CodeSearch</title>
+        <title>АСТРА-М CodeSearch</title>
         <style>
             body { font-family: system-ui; background: #1a1b26; color: #c0caf5; 
                    display: flex; justify-content: center; align-items: center; 
@@ -104,8 +104,8 @@ async def root():
     </head>
     <body>
         <div class="container">
-            <h1>KPD CodeSearch Web UI</h1>
-            <p>Build the frontend first: <code>cd ui && npm run build</code></p>
+            <h1>АСТРА-М CodeSearch</h1>
+            <p>Build the frontend first: <code>cd frontend && npm run build</code></p>
             <p>Then restart the server.</p>
         </div>
     </body>
@@ -113,8 +113,8 @@ async def root():
     """
 
 
-# Serve static files from ui/dist — Vite builds with /assets/ and /favicon.svg at root
-static_path = Path(__file__).parent.parent / "ui" / "dist"
+# Serve static files from frontend/dist — Vite builds with /assets/ and /favicon.svg at root
+static_path = Path(__file__).parent.parent / "frontend" / "dist"
 if static_path.exists():
     assets_path = static_path / "assets"
     if assets_path.exists():
@@ -126,6 +126,16 @@ if static_path.exists():
         @app.get("/favicon.svg")
         async def favicon():
             return FileResponse(str(favicon_path), media_type="image/svg+xml")
+
+
+_index_path = Path(__file__).parent.parent / "frontend" / "dist" / "index.html"
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa_fallback(request: Request, full_path: str):
+    """SPA catch-all: отдаём index.html для любого фронт-роута."""
+    if _index_path.exists():
+        return HTMLResponse(_index_path.read_text(encoding="utf-8"))
+    return HTMLResponse("Not found", status_code=404)
 
 
 if __name__ == "__main__":

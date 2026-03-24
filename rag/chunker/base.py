@@ -1,6 +1,7 @@
 """Общая база: обход файлов, определение языка, игнор паттерны."""
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -112,6 +113,27 @@ def should_ignore(path: Path) -> bool:
     return False
 
 
+def _classify_file(path: Path, repo_path: Path, gitignore) -> str | None:
+    """Возвращает skip_reason или None (= indexed).
+
+    Порядок проверок совпадает с iter_code_files — единый источник истины.
+    """
+    name = path.name
+    if "node_modules" in path.parts:
+        return "node_modules_path"
+    if name in IGNORE_FILENAMES:
+        return "ignored_name"
+    if any(name.endswith(ext) for ext in IGNORE_EXTENSIONS):
+        return "ignored_extension"
+    if gitignore is not None:
+        rel = path.relative_to(repo_path).as_posix()
+        if gitignore.match_file(rel):
+            return "gitignore"
+    if path.suffix.lower() not in EXTENSION_TO_LANGUAGE:
+        return "unsupported_extension"
+    return None
+
+
 def get_language(path: Path) -> str:
     ext = path.suffix.lower()
     return EXTENSION_TO_LANGUAGE.get(ext, "text")
@@ -121,19 +143,109 @@ def get_ts_grammar(lang: str) -> str:
     return TS_GRAMMAR_ALIAS.get(lang, lang)
 
 
+def walk_repo_tree(repo_path: Path) -> dict:
+    """Полный обход репозитория с классификацией каждого файла.
+
+    Возвращает: { "tree": [Node, ...], "meta": { ... } }
+
+    Узел (Node):
+      type: "file" | "dir"
+      name: str
+      path: str  — POSIX, относительно repo_path
+      extension: str | None  — для file, с точкой, lower
+      indexed: bool | None   — true/false для file; false для IGNORE_DIRS-заглушки; null для обычной dir
+      skip_reason: str | None
+      children: list | None  — для dir; [] у заглушек IGNORE_DIRS
+    """
+    gitignore = _load_gitignore(repo_path)
+
+    # trie-словарь: path_posix -> node_dict; корень — {"/": children_list}
+    root_children: list = []
+    dir_children_map: dict[str, list] = {"": root_children}
+
+    indexed_count = 0
+    skipped_count = 0
+
+    for root, dirs, files in os.walk(repo_path, topdown=True):
+        root_path = Path(root)
+        root_rel = root_path.relative_to(repo_path).as_posix()
+        parent_key = root_rel if root_rel != "." else ""
+        parent_children = dir_children_map.get(parent_key, root_children)
+
+        # Отсекаем IGNORE_DIRS — добавляем заглушки и убираем из обхода
+        ignored = [d for d in dirs if d in IGNORE_DIRS]
+        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+
+        for d in sorted(ignored):
+            dir_rel = (root_path / d).relative_to(repo_path).as_posix()
+            node = {
+                "type": "dir",
+                "name": d,
+                "path": dir_rel,
+                "extension": None,
+                "indexed": False,
+                "skip_reason": "ignored_directory",
+                "children": [],
+            }
+            parent_children.append(node)
+            skipped_count += 1
+
+        # Регистрируем обычные папки (чтобы их children заполнялись позже)
+        for d in sorted(dirs):
+            dir_rel = (root_path / d).relative_to(repo_path).as_posix()
+            node: dict = {
+                "type": "dir",
+                "name": d,
+                "path": dir_rel,
+                "extension": None,
+                "indexed": None,
+                "skip_reason": None,
+                "children": [],
+            }
+            parent_children.append(node)
+            dir_children_map[dir_rel] = node["children"]
+
+        # Файлы
+        for f in sorted(files):
+            file_path = root_path / f
+            skip_reason = _classify_file(file_path, repo_path, gitignore)
+            file_rel = file_path.relative_to(repo_path).as_posix()
+            ext = file_path.suffix.lower() or None
+            if skip_reason is None:
+                indexed_count += 1
+            else:
+                skipped_count += 1
+            node = {
+                "type": "file",
+                "name": f,
+                "path": file_rel,
+                "extension": ext,
+                "indexed": skip_reason is None,
+                "skip_reason": skip_reason,
+                "children": None,
+            }
+            parent_children.append(node)
+
+    return {
+        "tree": root_children,
+        "meta": {
+            "repo": repo_path.name,
+            "root_path": repo_path.as_posix(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "indexed_file_count": indexed_count,
+            "skipped_file_count": skipped_count,
+        },
+    }
+
+
 def iter_code_files(repo_path: Path) -> Iterator[Path]:
+    """Файлы, которые войдут в индекс. Единственный источник истины — _classify_file."""
     gitignore = _load_gitignore(repo_path)
     for root, dirs, files in os.walk(repo_path):
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
         for f in files:
             path = Path(root) / f
-            if "node_modules" in path.parts or should_ignore(path):
-                continue
-            if gitignore is not None:
-                rel = path.relative_to(repo_path).as_posix()
-                if gitignore.match_file(rel):
-                    continue
-            if path.suffix.lower() in EXTENSION_TO_LANGUAGE:
+            if _classify_file(path, repo_path, gitignore) is None:
                 yield path
 
 

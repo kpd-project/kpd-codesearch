@@ -77,7 +77,7 @@ def _resolve_repo_abs_path(repo_name: str, props: dict) -> str:
 @dataclass
 class RuntimeSettings:
     """Runtime configurable settings."""
-    model: str = config.OPENROUTER_MODEL
+    model: str = config.OPENAI_MODEL
     temperature: float = 0.1
     top_k: int = 10
     max_chunks: int = 10
@@ -132,6 +132,7 @@ class State:
         return {
             "name": name,
             "display_name": props.get("display_name"),
+            "suggested_name": props.get("suggested_name"),
             "path": abs_path,
             "relative_path": relative_path,
             "indexed_path": indexed_path,
@@ -141,6 +142,7 @@ class State:
             "status": self._repo_status.get(name, "idle"),
             "description": props.get("description"),
             "short_description": props.get("short_description"),
+            "full_description": props.get("full_description") or props.get("description"),
             "embedder_model": _embedder_model_from_sources(props),
             "embedder_dimension": _embedder_dimension_from_sources(props),
             "collection_metadata": collection_metadata,
@@ -166,6 +168,20 @@ class State:
         except Exception as e:
             logger.error(f"Failed to list repos: {e}")
             return []
+
+    def list_enabled_repos(self) -> list[dict]:
+        """Только репозитории с enabled=True — для API списка «доступных» (RAG)."""
+        result: list[dict] = []
+        for r in self.list_repos():
+            if not r.get("enabled", True):
+                continue
+            short = r.get("short_description")
+            full = r.get("full_description") or r.get("description")
+            entry = dict(r)
+            entry["short_description"] = short
+            entry["full_description"] = full
+            result.append(entry)
+        return result
 
     def get_repo(self, name: str) -> dict | None:
         """Один репо из Qdrant или None если не существует."""

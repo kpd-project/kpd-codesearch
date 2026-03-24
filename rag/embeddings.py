@@ -1,4 +1,4 @@
-"""Эмбеддинги через OpenRouter API. Прямой вызов без LangChain — без tiktoken и зависаний."""
+"""Эмбеддинги через OpenAI-compatible API. Прямой вызов без LangChain — без tiktoken и зависаний."""
 
 import asyncio
 import logging
@@ -25,13 +25,19 @@ def get_embeddings():
             model = "openai/text-embedding-3-small"
 
         # Создаём один синхронный клиент — не требует event loop
+        # max_retries=0 отключает автоматические ретраи OpenAI (борьба с бесконечным loop при таймаутах)
+        # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
         client = OpenAI(
-            api_key=config.OPENROUTER_API_KEY,
-            base_url=config.OPENROUTER_API_URL.rstrip("/"),
-            timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+            api_key=config.OPENAI_API_KEY,
+            base_url=config.OPENAI_BASE_URL.rstrip("/"),
+            http_client=httpx.Client(
+                timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                verify=False,
+            ),
+            max_retries=0,
         )
 
-        class OpenRouterEmbeddings:
+        class OpenAICompatibleEmbeddings:
             def embed_query(self, text: str):
                 logger.debug("embed_query: len=%d", len(text))
                 try:
@@ -54,7 +60,7 @@ def get_embeddings():
                     logger.error("embed_documents failed: %s", e)
                     raise
 
-        EMBEDDINGS = OpenRouterEmbeddings()
+        EMBEDDINGS = OpenAICompatibleEmbeddings()
     return EMBEDDINGS
 
 
@@ -66,7 +72,7 @@ def get_async_embeddings():
         if model == "text-embedding-3-small":
             model = "openai/text-embedding-3-small"
 
-        class AsyncOpenRouterEmbeddings:
+        class AsyncOpenAICompatibleEmbeddings:
             def __init__(self):
                 self._client = None
                 self._semaphore = asyncio.Semaphore(config.EMBED_MAX_CONCURRENT)
@@ -74,10 +80,16 @@ def get_async_embeddings():
             @property
             def client(self):
                 if self._client is None:
+                    # max_retries=0 отключает автоматические ретраи OpenAI
+                    # verify=False для обхода SSL ошибок (корпоративный прокси/CA)
                     self._client = AsyncOpenAI(
-                        api_key=config.OPENROUTER_API_KEY,
-                        base_url=config.OPENROUTER_API_URL.rstrip("/"),
-                        timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                        api_key=config.OPENAI_API_KEY,
+                        base_url=config.OPENAI_BASE_URL.rstrip("/"),
+                        http_client=httpx.AsyncClient(
+                            timeout=httpx.Timeout(config.EMBED_REQUEST_TIMEOUT),
+                            verify=False,
+                        ),
+                        max_retries=0,
                     )
                 return self._client
 
@@ -98,5 +110,5 @@ def get_async_embeddings():
                 results = await embed_batch(texts)
                 return results
 
-        ASYNC_EMBEDDINGS = AsyncOpenRouterEmbeddings()
+        ASYNC_EMBEDDINGS = AsyncOpenAICompatibleEmbeddings()
     return ASYNC_EMBEDDINGS

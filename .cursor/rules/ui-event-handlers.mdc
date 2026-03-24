@@ -1,0 +1,23 @@
+---
+description: React UI — обработчики событий вынесены из JSX, именование *Handler
+globs: frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Обработчики событий в UI (`frontend/`)
+
+- Пропсы `onChange`, `onClick`, `onKeyDown`, `onValueChange`, `onCheckedChange` и аналоги **не заполняем инлайн-лямбдами** в разметке.
+- Логику выносим в **отдельные функции** в теле компонента (или в `useCallback`, если нужна стабильная ссылка).
+- **Именование:** по смыслу + суффикс `Handler`, например `onQueryChangeHandler`, `onSearchClickHandler`, `onKeyDownHandler`. Если обработчик один на конкретный проп в локальном блоке — допустимо `onChangeHandler` / `onClickHandler` для этого блока.
+- В JSX передаём ссылку: `onChange={onQueryChangeHandler}`, не `onChange={(e) => { ... }}`.
+
+```tsx
+// ❌ инлайн в JSX
+<Input onChange={(e) => setPrefs((p) => ({ ...p, query: e.target.value }))} />
+
+// ✅ вынесено
+const onQueryChangeHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
+  setPrefs((p) => ({ ...p, query: e.target.value }));
+};
+<Input onChange={onQueryChangeHandler} />
+```

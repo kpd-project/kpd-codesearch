@@ -1,13 +1,14 @@
-# LCPRO — автозапуск Telegram RAG-бота
+# ASTRA-M — базовый compose (приложение + облачный Qdrant из .env)
+version: '3.8'
 services:
-  lcpro:
+  astra-m-bot:
     build: .
-    image: lcpro-bot:latest
-    container_name: lcpro
+    image: astra-m-bot:latest
+    container_name: astra-m-bot
     restart: unless-stopped
     env_file: .env
     environment:
       REPOS_BASE_PATH: /repos
     volumes:
-      # Монтируем репозитории KPD (путь с хоста → в контейнере)
-      - ${REPOS_BASE_PATH:-d:/kpd-project}:/repos:ro
+      # Монтируем каталог с репозиториями (путь с хоста → в контейнере)
+      - ${REPOS_BASE_PATH:-d:/projects}:/repos:ro
