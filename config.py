@@ -46,9 +46,6 @@ EMBED_REQUEST_TIMEOUT = int(os.getenv("EMBED_REQUEST_TIMEOUT", "60"))
 # Размер батча для upsert (избежание 413 nginx)
 QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "200"))
 
-# Количество последних сессий в logs/ (ротация)
-LOG_ROTATION = int(os.getenv("LOG_ROTATION", "10"))
-
 # Режим RAG по умолчанию (переключается через /api/config/runtime и сразу действует для веба)
 _r = os.getenv("RAG_RUNTIME_MODE", "agent").strip().lower()
 RAG_RUNTIME_MODE: str = _r if _r in ("simple", "agent") else "agent"
@@ -63,13 +60,13 @@ RAG_SEARCH_TOP_K = int(os.getenv("RAG_SEARCH_TOP_K", "10"))
 # Верхняя граница top_k (LLM не может запросить больше)
 RAG_SEARCH_TOP_K_MAX = int(os.getenv("RAG_SEARCH_TOP_K_MAX", "15"))
 # Порог score для включения результата (ниже — отбрасываем, 0 = брать все)
-RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.65"))
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.55"))
 # Макс. результатов при поиске по всем репо (объединённый топ)
 RAG_SEARCH_ALL_LIMIT = int(os.getenv("RAG_SEARCH_ALL_LIMIT", "15"))
 # max_tokens в цикле агента (с tool_calls)
 RAG_AGENT_MAX_TOKENS = int(os.getenv("RAG_AGENT_MAX_TOKENS", "10000"))
 # max_tokens для финального ответа без инструментов
-RAG_AGENT_FINAL_MAX_TOKENS = int(os.getenv("RAG_AGENT_FINAL_MAX_TOKENS", "3000"))
+RAG_AGENT_FINAL_MAX_TOKENS = int(os.getenv("RAG_AGENT_FINAL_MAX_TOKENS", "3500"))
 # temperature для LLM (0–1, меньше = детерминированнее)
 RAG_AGENT_TEMPERATURE = float(os.getenv("RAG_AGENT_TEMPERATURE", "0.1"))
 # Таймаут HTTP-запросов к LLM (OpenAI-compatible) (сек)
@@ -104,5 +101,5 @@ ANSWERER_MAX_REASONING_TOKENS = int(os.getenv("ANSWERER_MAX_REASONING_TOKENS", "
 ANSWERER_TIMEOUT = int(os.getenv("ANSWERER_TIMEOUT", "120"))
 ANSWERER_HISTORY_LIMIT = int(os.getenv("ANSWERER_HISTORY_LIMIT", "20"))
 
-# Макс. итераций в двухагентном пайплайне — увеличено для глубокого ресёрча
-PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "4"))
+# Макс. итераций в двухагентном пайплайне (полный цикл Analyst → поиск → Answerer)
+PIPELINE_MAX_ITERATIONS = int(os.getenv("PIPELINE_MAX_ITERATIONS", "3"))
